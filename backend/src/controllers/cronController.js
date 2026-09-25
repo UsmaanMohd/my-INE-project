@@ -1,134 +1,90 @@
 const supabase = require("../config/supabase");
 const { scrapeAndSave } = require("../services/scrapeService");
 
-// ============================================
-// RUN SCRAPE FOR ALL TRACKED PRODUCTS
-// POST /api/cron/scrape
-// ============================================
-
 async function runScheduledScrape(req, res) {
   try {
-    // --------------------------------------------
-    // CRON SECRET CHECK
-    // --------------------------------------------
-
     const cronSecret = process.env.CRON_SECRET;
     const requestSecret = req.headers["x-cron-secret"];
 
-    if (
-      !cronSecret ||
-      requestSecret !== cronSecret
-    ) {
+    // Security check
+    if (!cronSecret || requestSecret !== cronSecret) {
       return res.status(401).json({
         success: false,
         message: "Unauthorized cron request"
       });
     }
 
-    // --------------------------------------------
-    // GET ALL TRACKED PRODUCTS
-    // --------------------------------------------
-
+    // Get all tracked products
     const {
       data: products,
       error
     } = await supabase
       .from("tracked_products")
       .select("*")
-      .order("id", {
-        ascending: true
-      });
+      .order("id", { ascending: true });
 
     if (error) {
       return res.status(500).json({
         success: false,
-        message:
-          "Failed to fetch tracked products",
+        message: "Failed to fetch tracked products",
         error: error.message
       });
     }
 
     if (!products || products.length === 0) {
-      return res.json({
+      return res.status(200).json({
         success: true,
         message: "No tracked products found",
-        count: 0,
-        results: []
+        count: 0
       });
     }
 
-    // --------------------------------------------
-    // SCRAPE PRODUCTS ONE BY ONE
-    // --------------------------------------------
+    /*
+      IMPORTANT:
 
-    const results = [];
+      We start the scraping in the background and immediately
+      return a response to cron-job.org.
 
-    for (const product of products) {
-      console.log(
-        `\nScheduled scrape started for: ${product.product_name}`
-      );
+      This prevents cron-job.org's 30-second timeout from
+      interrupting our Playwright scraping.
+    */
 
-      try {
-        const result =
-          await scrapeAndSave(product);
+    setImmediate(async () => {
+      console.log("\n========================================");
+      console.log("BACKGROUND SCHEDULED SCRAPE STARTED");
+      console.log("Products:", products.length);
+      console.log("========================================");
 
-        results.push({
-          product_id: product.id,
-          store_product_id:
-            product.store_product_id,
-          product_name:
-            product.product_name,
-          selected_option:
-            product.selected_option,
-          success: result.success,
-          outcome: result.outcome,
-          attempt: result.attempt,
-          error: result.error || null
-        });
-
-      } catch (error) {
-        console.error(
-          `Scheduled scrape error for product ${product.id}:`,
-          error.message
+      for (const product of products) {
+        console.log(
+          `\nScheduled scrape started for: ${product.product_name}`
         );
 
-        results.push({
-          product_id: product.id,
-          store_product_id:
-            product.store_product_id,
-          product_name:
-            product.product_name,
-          selected_option:
-            product.selected_option,
-          success: false,
-          outcome: "failed",
-          error: error.message
-        });
+        try {
+          const result = await scrapeAndSave(product);
+
+          console.log(
+            `Scheduled scrape finished for ${product.product_name}:`,
+            result
+          );
+        } catch (error) {
+          console.error(
+            `Scheduled scrape error for product ${product.id}:`,
+            error.message
+          );
+        }
       }
-    }
 
-    // --------------------------------------------
-    // FINAL RESPONSE
-    // --------------------------------------------
+      console.log("\n========================================");
+      console.log("BACKGROUND SCHEDULED SCRAPE COMPLETED");
+      console.log("========================================\n");
+    });
 
-    const successCount =
-      results.filter(
-        (item) => item.success === true
-      ).length;
-
-    const failedCount =
-      results.filter(
-        (item) => item.success === false
-      ).length;
-
-    res.json({
+    // Return immediately
+    return res.status(202).json({
       success: true,
-      message:
-        "Scheduled scrape completed",
-      total: products.length,
-      successful: successCount,
-      failed: failedCount,
-      results
+      message: "Scheduled scrape started in background",
+      count: products.length
     });
 
   } catch (error) {
@@ -137,10 +93,9 @@ async function runScheduledScrape(req, res) {
       error
     );
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
-      message:
-        "Scheduled scrape failed",
+      message: "Failed to start scheduled scrape",
       error: error.message
     });
   }
