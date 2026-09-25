@@ -121,6 +121,18 @@ async function scrapeProduct({
       "120 mouse movements completed"
     );
 
+    // ============================================
+    // EXPLICIT OFFER PANEL HOVER
+    // ============================================
+
+    await offerPanel.hover({
+      timeout: 10000
+    });
+
+    console.log(
+      "Offer panel hover completed"
+    );
+
     // Give hover/dwell logic time
     await page.waitForTimeout(1500);
 
