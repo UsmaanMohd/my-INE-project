@@ -122,18 +122,23 @@ async function scrapeProduct({
     );
 
     // ============================================
-    // EXPLICIT OFFER PANEL HOVER
+    // CHECK COOKIE SCRIM AFTER MOVEMENTS
     // ============================================
 
-    await offerPanel.hover({
-      timeout: 10000
-    });
+    await page.waitForTimeout(500);
 
     console.log(
-      "Offer panel hover completed"
+      "Checking cookie consent after hover movements..."
     );
 
-    // Give hover/dwell logic time
+    await handleCookies(page);
+
+    await page.waitForTimeout(500);
+
+    // ============================================
+    // GIVE HOVER/DWELL LOGIC TIME
+    // ============================================
+
     await page.waitForTimeout(1500);
 
     // ============================================
