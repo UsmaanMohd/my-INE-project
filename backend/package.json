@@ -1,0 +1,24 @@
+{
+	"name": "ine-price-tracker-backend",
+	"version": "1.0.0",
+	"description": "INE Product Price Tracker backend",
+	"main": "src/server.js",
+	"scripts": {
+		"start": "node src/server.js",
+		"dev": "nodemon src/server.js"
+	},
+	"keywords": [],
+	"author": "Usmaan",
+	"license": "ISC",
+	"dependencies": {
+		"@supabase/supabase-js": "^2.117.2",
+		"cheerio": "^1.2.0",
+		"cors": "^2.8.6",
+		"dotenv": "^18.0.3",
+		"express": "^5.2.1",
+		"playwright": "^1.63.0"
+	},
+	"devDependencies": {
+		"nodemon": "^3.1.14"
+	}
+}
