@@ -11,7 +11,7 @@ async function scrapeProduct({
   console.log("================================");
 
   const browser = await chromium.launch({
-    headless: false
+    headless: process.env.HEADLESS === "true"
   });
 
   const context = await browser.newContext();
@@ -363,6 +363,7 @@ async function scrapeProduct({
      * Usually the final ₹ amount is the
      * current/selling price.
      */
+
     const priceText =
       priceMatches[
         priceMatches.length - 1
@@ -393,6 +394,7 @@ async function scrapeProduct({
      *
      * AVAILABLE (192)
      */
+
     const availableMatch =
       cleanPanelText.match(
         /AVAILABLE\s*\(\s*(\d+)\s*\)/i
@@ -408,6 +410,7 @@ async function scrapeProduct({
      *
      * 192 UNITS AVAILABLE
      */
+
     if (!stock) {
       const unitsMatch =
         cleanPanelText.match(
@@ -423,6 +426,7 @@ async function scrapeProduct({
     /*
      * Out of stock
      */
+
     if (
       /OUT OF STOCK/i.test(cleanPanelText)
     ) {
