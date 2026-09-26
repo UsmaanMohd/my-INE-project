@@ -36,25 +36,39 @@ async function scrapeProduct({
         `WATCHDOG: scrape exceeded ${timeoutMs}ms — forcing browser cleanup`
       );
 
-      try {
-        if (resources.page) {
-          await resources.page
-            .close({ runBeforeUnload: false })
-            .catch(() => {});
-        }
-      } catch {}
+      // Each close call gets its OWN short timeout. If the page/browser is
+      // fully frozen (e.g. the site is stuck in a heavy JS loop), even
+      // browser.close() can hang waiting for a response that never comes.
+      // Racing every close against a short timer guarantees the watchdog
+      // itself always resolves, no matter how dead the browser is.
+      const CLOSE_TIMEOUT_MS = 5000;
 
-      try {
-        if (resources.context) {
-          await resources.context.close().catch(() => {});
-        }
-      } catch {}
+      const raceClose = (label, closeFn) =>
+        Promise.race([
+          closeFn().catch(() => {}),
+          new Promise(res =>
+            setTimeout(() => {
+              console.log(`WATCHDOG: ${label} close did not finish in time, giving up on it`);
+              res();
+            }, CLOSE_TIMEOUT_MS)
+          )
+        ]);
 
-      try {
-        if (resources.browser) {
-          await resources.browser.close().catch(() => {});
-        }
-      } catch {}
+      if (resources.page) {
+        await raceClose("page", () =>
+          resources.page.close({ runBeforeUnload: false })
+        );
+      }
+
+      if (resources.context) {
+        await raceClose("context", () => resources.context.close());
+      }
+
+      if (resources.browser) {
+        await raceClose("browser", () => resources.browser.close());
+      }
+
+      console.log("WATCHDOG: cleanup pass finished, resolving as failure");
 
       resolve({
         success: false,
