@@ -2,151 +2,192 @@ async function handleCookies(page) {
   console.log("Checking cookie consent...");
 
   try {
-    const consent =
-      page.locator(".consent-scrim");
+    await page.waitForTimeout(500);
 
-    /*
-     * Give dynamically rendered consent UI
-     * a short chance to appear.
-     */
-    await page.waitForTimeout(300);
+    const scrim = page.locator(".consent-scrim");
 
-    const count =
-      await consent.count();
+    const count = await scrim.count();
 
-    console.log(
-      "Consent popup count:",
-      count
-    );
+    console.log("Consent popup count:", count);
 
     if (count === 0) {
-      console.log(
-        "No cookie popup found."
-      );
-
-      return false;
+      console.log("No cookie popup found.");
+      return true;
     }
 
-    const visible =
-      await consent
-        .first()
-        .isVisible()
-        .catch(() => false);
+    const isBlocking = async () => {
+      return await page
+        .evaluate(() => {
+          const scrimElement =
+            document.querySelector(".consent-scrim");
 
-    console.log(
-      "Consent popup visible:",
-      visible
-    );
-
-    if (!visible) {
-      console.log(
-        "Cookie popup is not visible."
-      );
-
-      return false;
-    }
-
-    console.log(
-      "COOKIE POPUP FOUND"
-    );
-
-    const popup =
-      consent.first();
-
-    const allowButton =
-      popup
-        .locator("button")
-        .filter({
-          hasText: /^ALLOW$/i
-        })
-        .first();
-
-    const allowCount =
-      await allowButton.count();
-
-    console.log(
-      "ALLOW buttons:",
-      allowCount
-    );
-
-    if (allowCount === 0) {
-      console.log(
-        "ALLOW button not found."
-      );
-
-      console.log(
-        "Popup buttons:",
-        await popup
-          .locator("button")
-          .allTextContents()
-      );
-
-      return false;
-    }
-
-    console.log(
-      "ALLOW BUTTON FOUND"
-    );
-
-    /*
-     * Use force because the consent overlay itself
-     * can sometimes interfere with normal Playwright
-     * pointer action.
-     */
-    await allowButton.click({
-      force: true,
-      timeout: 5000
-    });
-
-    console.log(
-      "ALLOW CLICK EXECUTED"
-    );
-
-    /*
-     * Wait for overlay to disappear.
-     */
-    await page
-      .waitForFunction(
-        () => {
-          const element =
-            document.querySelector(
-              ".consent-scrim"
-            );
-
-          if (!element) {
-            return true;
+          if (!scrimElement) {
+            return false;
           }
 
           const style =
-            window.getComputedStyle(element);
+            window.getComputedStyle(
+              scrimElement
+            );
 
-          return (
+          const rect =
+            scrimElement.getBoundingClientRect();
+
+          const hidden =
             style.display === "none" ||
             style.visibility === "hidden" ||
-            style.opacity === "0"
-          );
-        },
-        null,
-        {
-          timeout: 5000
-        }
-      )
-      .catch(() => {});
+            style.opacity === "0" ||
+            style.pointerEvents === "none" ||
+            rect.width === 0 ||
+            rect.height === 0;
 
-    await page.waitForTimeout(500);
-
-    const finalVisible =
-      await consent
-        .first()
-        .isVisible()
+          return !hidden;
+        })
         .catch(() => false);
+    };
+
+    let blocking = await isBlocking();
 
     console.log(
-      "Final cookie popup visible:",
-      finalVisible
+      "Consent scrim blocking interaction:",
+      blocking
     );
 
-    if (!finalVisible) {
+    if (!blocking) {
+      console.log(
+        "Consent scrim is not blocking interaction."
+      );
+
+      return true;
+    }
+
+    console.log("COOKIE POPUP FOUND");
+
+    /*
+     * Try common consent button names.
+     */
+    const buttonTexts = [
+      /^ALLOW$/i,
+      /^ACCEPT$/i,
+      /^ACCEPT ALL$/i,
+      /^I AGREE$/i,
+      /^OK$/i,
+      /^CONTINUE$/i
+    ];
+
+    let consentButton = null;
+
+    /*
+     * Search inside the actual consent dialog first.
+     */
+    const dialog =
+      page.locator(
+        '[role="dialog"][aria-modal="true"]'
+      ).first();
+
+    const dialogCount =
+      await dialog.count();
+
+    console.log(
+      "Consent dialogs:",
+      dialogCount
+    );
+
+    if (dialogCount > 0) {
+      for (
+        const textPattern of buttonTexts
+      ) {
+        const button =
+          dialog
+            .locator("button")
+            .filter({
+              hasText: textPattern
+            })
+            .first();
+
+        if (
+          await button.count() > 0
+        ) {
+          consentButton = button;
+          break;
+        }
+      }
+    }
+
+    /*
+     * Fallback: search the whole page.
+     */
+    if (!consentButton) {
+      for (
+        const textPattern of buttonTexts
+      ) {
+        const button =
+          page
+            .locator("button")
+            .filter({
+              hasText: textPattern
+            })
+            .first();
+
+        if (
+          await button.count() > 0
+        ) {
+          consentButton = button;
+          break;
+        }
+      }
+    }
+
+    if (consentButton) {
+      console.log(
+        "Consent button found."
+      );
+
+      try {
+        console.log(
+          "Consent button text:",
+          await consentButton.innerText()
+        );
+      } catch {
+        // Ignore text read failure.
+      }
+
+      try {
+        await consentButton.click({
+          force: true,
+          timeout: 5000
+        });
+
+        console.log(
+          "Consent button clicked."
+        );
+      } catch (error) {
+        console.log(
+          "Consent button click failed:",
+          error.message
+        );
+      }
+    } else {
+      console.log(
+        "No consent button found."
+      );
+    }
+
+    /*
+     * Give the page time to remove/update
+     * the consent overlay.
+     */
+    await page.waitForTimeout(700);
+
+    blocking =
+      await isBlocking();
+
+    console.log(
+      "Scrim blocking after consent click:",
+      blocking
+    );
+
+    if (!blocking) {
       console.log(
         "COOKIE CONSENT HANDLED SUCCESSFULLY"
       );
@@ -155,31 +196,87 @@ async function handleCookies(page) {
     }
 
     /*
-     * Last fallback: press Escape.
+     * Fallback 1: Escape.
      */
     console.log(
-      "Popup still visible. Trying Escape..."
+      "Consent scrim still blocking. Trying Escape..."
     );
 
-    await page.keyboard.press("Escape");
+    try {
+      await page.keyboard.press(
+        "Escape"
+      );
+    } catch (error) {
+      console.log(
+        "Escape failed:",
+        error.message
+      );
+    }
 
     await page.waitForTimeout(500);
 
-    const afterEscape =
-      await consent
-        .first()
-        .isVisible()
-        .catch(() => false);
+    blocking =
+      await isBlocking();
 
     console.log(
-      "Popup visible after Escape:",
-      afterEscape
+      "Scrim blocking after Escape:",
+      blocking
     );
 
-    return !afterEscape;
+    if (!blocking) {
+      console.log(
+        "COOKIE CONSENT HANDLED WITH ESCAPE"
+      );
+
+      return true;
+    }
+
+    /*
+     * Fallback 2: try the consent button again.
+     */
+    if (consentButton) {
+      console.log(
+        "Trying consent button again..."
+      );
+
+      try {
+        await consentButton.click({
+          force: true,
+          timeout: 3000
+        });
+      } catch (error) {
+        console.log(
+          "Second consent click failed:",
+          error.message
+        );
+      }
+
+      await page.waitForTimeout(700);
+
+      blocking =
+        await isBlocking();
+
+      console.log(
+        "Scrim blocking after second click:",
+        blocking
+      );
+
+      if (!blocking) {
+        console.log(
+          "COOKIE CONSENT HANDLED SUCCESSFULLY"
+        );
+
+        return true;
+      }
+    }
+
+    console.log(
+      "WARNING: Cookie scrim is still blocking interaction."
+    );
+
+    return false;
 
   } catch (error) {
-
     console.log(
       "Cookie handler error:",
       error.message

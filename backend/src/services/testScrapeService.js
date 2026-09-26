@@ -6,7 +6,7 @@ const {
 async function main() {
 
   console.log(
-    "\n========== GETTING TRACKED PRODUCT =========="
+    "\n========== GETTING TRACKED PRODUCTS =========="
   );
 
   const {
@@ -15,34 +15,70 @@ async function main() {
   } = await supabase
     .from("tracked_products")
     .select("*")
-    .eq("store_product_id", "2638")
-    .eq("selected_option", "2-pack")
-    .single();
+    .order("id", {
+      ascending: true
+    });
 
   if (error) {
 
     console.error(
-      "Failed to get tracked product:",
+      "Failed to get tracked products:",
       error.message
     );
 
     return;
   }
 
+  if (!data || data.length === 0) {
+
+    console.log(
+      "No tracked products found."
+    );
+
+    return;
+  }
+
   console.log(
-    "\nTRACKED PRODUCT:"
+    `Found ${data.length} tracked product(s).`
   );
 
-  console.log(data);
+  for (const product of data) {
 
-  const result =
-    await scrapeAndSave(data);
+    console.log(
+      "\n========================================"
+    );
+
+    console.log(
+      "TRACKED PRODUCT:"
+    );
+
+    console.log(product);
+
+    console.log(
+      "========================================"
+    );
+
+    const result =
+      await scrapeAndSave(product);
+
+    console.log(
+      "\n========== PRODUCT RESULT =========="
+    );
+
+    console.log(result);
+  }
 
   console.log(
-    "\n========== FINAL RESULT =========="
+    "\n========== ALL PRODUCTS COMPLETED =========="
   );
-
-  console.log(result);
 }
 
-main();
+main().catch((error) => {
+
+  console.error(
+    "Test script failed:",
+    error.message
+  );
+
+  process.exit(1);
+}); 

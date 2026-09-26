@@ -30,10 +30,77 @@ async function scrapeProduct({
     await page.waitForTimeout(2000);
 
     // ============================================
-    // HANDLE COOKIE POPUP
+    // GENERIC COOKIE HANDLING
     // ============================================
 
+    console.log(
+      "Checking cookie consent before option selection..."
+    );
+
     await handleCookies(page);
+
+    await page.waitForTimeout(500);
+
+    const isCookieBlocking = async () => {
+      return await page.evaluate(() => {
+        const scrim =
+          document.querySelector(".consent-scrim");
+
+        if (!scrim) {
+          return false;
+        }
+
+        const style =
+          window.getComputedStyle(scrim);
+
+        const rect =
+          scrim.getBoundingClientRect();
+
+        const visible =
+          style.display !== "none" &&
+          style.visibility !== "hidden" &&
+          Number(style.opacity) !== 0 &&
+          rect.width > 0 &&
+          rect.height > 0;
+
+        return (
+          visible &&
+          style.pointerEvents !== "none"
+        );
+      });
+    };
+
+    let cookieBlocking =
+      await isCookieBlocking();
+
+    console.log(
+      "Cookie scrim blocking page:",
+      cookieBlocking
+    );
+
+    if (cookieBlocking) {
+      console.log(
+        "Cookie overlay still blocking. Retrying..."
+      );
+
+      await handleCookies(page);
+
+      await page.waitForTimeout(1000);
+
+      cookieBlocking =
+        await isCookieBlocking();
+
+      console.log(
+        "Cookie scrim blocking after retry:",
+        cookieBlocking
+      );
+    }
+
+    if (cookieBlocking) {
+      throw new Error(
+        "Cookie consent overlay is still blocking the page"
+      );
+    }
 
     // ============================================
     // SELECT PRODUCT OPTION
@@ -45,23 +112,38 @@ async function scrapeProduct({
         "\\$&"
       );
 
-    const optionButton = page
-      .locator("button")
-      .filter({
-        hasText: new RegExp(
-          `^${escapedOption}$`,
-          "i"
-        )
-      })
-      .first();
+    const optionButton =
+      page
+        .locator("button")
+        .filter({
+          hasText: new RegExp(
+            `^${escapedOption}$`,
+            "i"
+          )
+        })
+        .first();
 
-    if (await optionButton.count() === 0) {
+    if (
+      await optionButton.count() === 0
+    ) {
       throw new Error(
         `Selected option not found: ${selectedOption}`
       );
     }
 
-    await optionButton.click();
+    await optionButton.waitFor({
+      state: "visible",
+      timeout: 10000
+    });
+
+    console.log(
+      "Selecting option:",
+      selectedOption
+    );
+
+    await optionButton.click({
+      timeout: 10000
+    });
 
     console.log(
       "Selected option:",
@@ -74,58 +156,66 @@ async function scrapeProduct({
     // FIND OFFER PANEL
     // ============================================
 
-    const offerPanel = page.locator(
-      ".offer-panel.offer-locked"
-    );
+    const offerPanel =
+      page.locator(
+        ".offer-panel.offer-locked"
+      );
 
     console.log(
       "Performing hover movements..."
     );
 
-    const box =
-      await offerPanel.boundingBox();
+    const performHoverMovements =
+      async () => {
+        const currentBox =
+          await offerPanel.boundingBox();
 
-    if (!box) {
-      throw new Error(
-        "Offer panel bounding box not found"
-      );
-    }
+        if (!currentBox) {
+          throw new Error(
+            "Offer panel bounding box not found during hover"
+          );
+        }
 
-    const startX =
-      box.x + box.width / 2;
+        const startX =
+          currentBox.x +
+          currentBox.width / 2;
 
-    const startY =
-      box.y + box.height / 2;
+        const startY =
+          currentBox.y +
+          currentBox.height / 2;
+
+        for (let i = 0; i < 120; i++) {
+          const x =
+            startX +
+            Math.sin(i / 4) * 80 +
+            (i % 5);
+
+          const y =
+            startY +
+            Math.cos(i / 5) * 20 +
+            (i % 3);
+
+          await page.mouse.move(x, y);
+
+          await page.waitForTimeout(50);
+        }
+
+        console.log(
+          "120 mouse movements completed"
+        );
+      };
 
     // ============================================
-    // GENUINE MOUSE MOVEMENTS
+    // FIRST HOVER
     // ============================================
 
-    for (let i = 0; i < 120; i++) {
-      const x =
-        startX +
-        Math.sin(i / 4) * 80 +
-        (i % 5);
-
-      const y =
-        startY +
-        Math.cos(i / 5) * 20 +
-        (i % 3);
-
-      await page.mouse.move(x, y);
-
-      await page.waitForTimeout(50);
-    }
-
-    console.log(
-      "120 mouse movements completed"
-    );
-
-    // ============================================
-    // CHECK COOKIE SCRIM AFTER MOVEMENTS
-    // ============================================
+    await performHoverMovements();
 
     await page.waitForTimeout(500);
+
+    // ============================================
+    // COOKIE MAY APPEAR AFTER HOVER
+    // ============================================
 
     console.log(
       "Checking cookie consent after hover movements..."
@@ -133,17 +223,41 @@ async function scrapeProduct({
 
     await handleCookies(page);
 
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1000);
+
+    cookieBlocking =
+      await isCookieBlocking();
+
+    console.log(
+      "Cookie scrim blocking after hover:",
+      cookieBlocking
+    );
+
+    if (cookieBlocking) {
+      throw new Error(
+        "Cookie consent overlay is still blocking after hover"
+      );
+    }
 
     // ============================================
-    // GIVE HOVER/DWELL LOGIC TIME
+    // SECOND HOVER AFTER COOKIE HANDLING
     // ============================================
 
-    await page.waitForTimeout(1500);
+    console.log(
+      "Repeating hover movements after cookie handling..."
+    );
+
+    await performHoverMovements();
+
+    await page.waitForTimeout(2000);
 
     // ============================================
-    // WAIT FOR PRICE BUTTON TO UNLOCK
+    // WAIT FOR PRICE BUTTON
     // ============================================
+
+    console.log(
+      "Waiting for price button to unlock..."
+    );
 
     await page.waitForFunction(
       () => {
@@ -159,7 +273,7 @@ async function scrapeProduct({
       },
       null,
       {
-        timeout: 30000
+        timeout: 60000
       }
     );
 
@@ -168,7 +282,7 @@ async function scrapeProduct({
     );
 
     // ============================================
-    // CHECK COOKIE POPUP AGAIN
+    // FINAL COOKIE CHECK
     // ============================================
 
     console.log(
@@ -179,36 +293,18 @@ async function scrapeProduct({
 
     await page.waitForTimeout(500);
 
-    const consentScrim =
-      page.locator(".consent-scrim");
-
-    const scrimCount =
-      await consentScrim.count();
-
-    let scrimVisible = false;
-
-    if (scrimCount > 0) {
-      scrimVisible =
-        await consentScrim
-          .first()
-          .isVisible()
-          .catch(() => false);
-    }
+    cookieBlocking =
+      await isCookieBlocking();
 
     console.log(
-      "Cookie scrim visible before click:",
-      scrimVisible
+      "Cookie scrim blocking before price click:",
+      cookieBlocking
     );
 
-    // If popup appears again
-    if (scrimVisible) {
-      console.log(
-        "Cookie popup appeared again. Handling..."
+    if (cookieBlocking) {
+      throw new Error(
+        "Cookie consent overlay is blocking price button"
       );
-
-      await handleCookies(page);
-
-      await page.waitForTimeout(1000);
     }
 
     // ============================================
@@ -235,7 +331,7 @@ async function scrapeProduct({
     }
 
     // ============================================
-    // WAIT FOR QUOTE API RESPONSE
+    // WAIT FOR QUOTE API
     // ============================================
 
     const quoteResponsePromise =
@@ -267,21 +363,16 @@ async function scrapeProduct({
       "Price button clicked"
     );
 
-    // ============================================
-    // WAIT FOR QUOTE API
-    // ============================================
-
     await quoteResponsePromise;
 
     console.log(
       "Quote API response received"
     );
 
-    // Give UI time to render
     await page.waitForTimeout(1000);
 
     // ============================================
-    // WAIT FOR FINAL OFFER PANEL
+    // WAIT FOR OFFER PANEL DATA
     // ============================================
 
     await page.waitForFunction(
@@ -299,11 +390,14 @@ async function scrapeProduct({
           panel.innerText || "";
 
         return (
-          /Loaded in/i.test(text) ||
-          /CHECK AGAIN/i.test(text) ||
+          /₹/.test(text) ||
+          /SOLD OUT/i.test(text) ||
           /OUT OF STOCK/i.test(text) ||
-          /AVAILABLE\s*\(/i.test(text) ||
-          /₹/.test(text)
+          /AVAILABLE/i.test(text) ||
+          /REMAINING/i.test(text) ||
+          /LAST FEW/i.test(text) ||
+          /LEFT/i.test(text) ||
+          /CHECK AGAIN/i.test(text)
         );
       },
       null,
@@ -317,9 +411,9 @@ async function scrapeProduct({
     // ============================================
 
     const panel =
-      page.locator(
-        ".offer-panel"
-      ).first();
+      page
+        .locator(".offer-panel")
+        .first();
 
     const panelText =
       await panel.innerText();
@@ -331,30 +425,27 @@ async function scrapeProduct({
     console.log(panelText);
 
     // ============================================
-    // NORMALIZE ZERO-WIDTH CHARACTERS
+    // CLEAN TEXT
     // ============================================
-
-    /*
-     * The mock store can insert zero-width
-     * Unicode characters inside prices.
-     *
-     * Example:
-     *
-     * ₹​2​1​,​9​6​8
-     *
-     * becomes:
-     *
-     * ₹21,968
-     */
 
     const cleanPanelText =
-      panelText.replace(
-        /[\u200B\u200C\u200D\uFEFF]/g,
-        ""
-      );
+      panelText
+        .replace(
+          /[\u200B\u200C\u200D\uFEFF]/g,
+          ""
+        )
+        .replace(
+          /\u00A0/g,
+          " "
+        )
+        .replace(
+          /\s+/g,
+          " "
+        )
+        .trim();
 
     // ============================================
-    // EXTRACT PRICE
+    // GENERIC PRICE EXTRACTION
     // ============================================
 
     const priceMatches =
@@ -377,8 +468,14 @@ async function scrapeProduct({
     );
 
     /*
-     * Usually the final ₹ amount is the
-     * current/selling price.
+     * The store can display:
+     *
+     * Original price
+     * Member price
+     * Current selling price
+     *
+     * The final ₹ amount is used as
+     * the current/selling price.
      */
 
     const priceText =
@@ -401,54 +498,190 @@ async function scrapeProduct({
     }
 
     // ============================================
-    // EXTRACT STOCK
+    // GENERIC STOCK EXTRACTION
     // ============================================
 
     let stock = null;
 
     /*
-     * Current store format:
-     *
-     * AVAILABLE (192)
+     * SOLD OUT
      */
 
-    const availableMatch =
-      cleanPanelText.match(
-        /AVAILABLE\s*\(\s*(\d+)\s*\)/i
-      );
-
-    if (availableMatch) {
+    if (
+      /SOLD OUT/i.test(
+        cleanPanelText
+      )
+    ) {
       stock =
-        `AVAILABLE (${availableMatch[1]})`;
+        "SOLD OUT";
     }
 
     /*
-     * Backup format:
-     *
-     * 192 UNITS AVAILABLE
+     * OUT OF STOCK
      */
 
     if (!stock) {
-      const unitsMatch =
-        cleanPanelText.match(
-          /(\d+)\s+UNITS?\s+AVAILABLE/i
-        );
-
-      if (unitsMatch) {
+      if (
+        /OUT OF STOCK/i.test(
+          cleanPanelText
+        )
+      ) {
         stock =
-          `${unitsMatch[1]} UNITS AVAILABLE`;
+          "OUT OF STOCK";
       }
     }
 
     /*
-     * Out of stock
+     * AVAILABLE (84)
+     * AVAILABLE(84)
      */
 
-    if (
-      /OUT OF STOCK/i.test(cleanPanelText)
-    ) {
-      stock =
-        "OUT OF STOCK";
+    if (!stock) {
+      const match =
+        cleanPanelText.match(
+          /\bAVAILABLE\s*\(\s*(\d+)\s*\)/i
+        );
+
+      if (match) {
+        stock =
+          `${match[1]} AVAILABLE`;
+      }
+    }
+
+    /*
+     * 84 AVAILABLE
+     * 84 UNITS AVAILABLE
+     */
+
+    if (!stock) {
+      const match =
+        cleanPanelText.match(
+          /\b(\d+)\s+(?:UNITS?\s+)?AVAILABLE\b/i
+        );
+
+      if (match) {
+        stock =
+          `${match[1]} AVAILABLE`;
+      }
+    }
+
+    /*
+     * LAST FEW: 141
+     * LAST FEW 141
+     *
+     * This is the format currently returned
+     * by the mock store for Junova.
+     */
+
+    if (!stock) {
+      const match =
+        cleanPanelText.match(
+          /\bLAST\s+FEW\s*[:\-]?\s*(\d+)\b/i
+        );
+
+      if (match) {
+        stock =
+          `LAST FEW: ${match[1]}`;
+      }
+    }
+
+    /*
+     * STOCK: 68 REMAINING
+     * STOCK - 68 REMAINING
+     * STOCK 68 REMAINING
+     */
+
+    if (!stock) {
+      const match =
+        cleanPanelText.match(
+          /\bSTOCK\s*[:\-]?\s*(\d+)\s+REMAINING\b/i
+        );
+
+      if (match) {
+        stock =
+          `${match[1]} AVAILABLE`;
+      }
+    }
+
+    /*
+     * 68 REMAINING
+     */
+
+    if (!stock) {
+      const match =
+        cleanPanelText.match(
+          /\b(\d+)\s+REMAINING\b/i
+        );
+
+      if (match) {
+        stock =
+          `${match[1]} AVAILABLE`;
+      }
+    }
+
+    /*
+     * ONLY 5 LEFT
+     * 5 LEFT
+     */
+
+    if (!stock) {
+      const match =
+        cleanPanelText.match(
+          /\b(?:ONLY\s+)?(\d+)\s+LEFT\b/i
+        );
+
+      if (match) {
+        stock =
+          `${match[1]} AVAILABLE`;
+      }
+    }
+
+    /*
+     * IN STOCK
+     */
+
+    if (!stock) {
+      if (
+        /\bIN STOCK\b/i.test(
+          cleanPanelText
+        )
+      ) {
+        stock =
+          "IN STOCK";
+      }
+    }
+
+    /*
+     * AVAILABLE WITHOUT NUMBER
+     */
+
+    if (!stock) {
+      if (
+        /\bAVAILABLE\b/i.test(
+          cleanPanelText
+        )
+      ) {
+        stock =
+          "AVAILABLE";
+      }
+    }
+
+    /*
+     * If the panel contains explicit
+     * stock/inventory wording but no
+     * numeric value, preserve it.
+     */
+
+    if (!stock) {
+      const stockLine =
+        cleanPanelText.match(
+          /(?:STOCK|INVENTORY)\s*[:\-]?\s*([A-Z0-9][A-Z0-9 ._-]{0,40})/i
+        );
+
+      if (stockLine) {
+        stock =
+          stockLine[0].trim();
+      }
     }
 
     if (!stock) {
@@ -458,7 +691,7 @@ async function scrapeProduct({
     }
 
     // ============================================
-    // FINAL RESULT
+    // SUCCESS
     // ============================================
 
     console.log(
@@ -499,7 +732,6 @@ async function scrapeProduct({
 
   } finally {
 
-    // Small delay before browser closes
     await page.waitForTimeout(1000);
 
     await browser.close();

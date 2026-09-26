@@ -3,6 +3,9 @@ const cors = require("cors");
 
 const supabase = require("./config/supabase");
 
+const catalogRoutes = require("./routes/catalogRoutes");
+
+
 const productRoutes =
   require("./routes/productRoutes");
 
@@ -77,6 +80,8 @@ app.use(
   productRoutes
 );
 
+
+app.use("/api/catalog", catalogRoutes);
 
 // ============================================
 // EXPORT ROUTES
