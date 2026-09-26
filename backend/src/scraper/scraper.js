@@ -350,7 +350,12 @@ async function scrapeProduct({
       "Checking cookie consent after hover movements..."
     );
 
-    await handleCookies(page);
+    // FIX #2: capture whether handleCookies actually did something.
+    // A popup that appears mid-hover and gets closed here still disturbs
+    // the page's state, so we should re-run the hover in that case even
+    // if the scrim itself is no longer visible right afterwards.
+    const cookieHandledAfterFirstHover =
+      await handleCookies(page);
 
     await page.waitForTimeout(500);
 
@@ -392,27 +397,33 @@ async function scrapeProduct({
     // COOKIE RECOVERY
     // ============================================
 
-    if (scrimVisible) {
+    // FIX #2: also repeat hover when a popup was handled during/after the
+    // first hover, not only when the scrim is still stuck visible.
+    if (scrimVisible || cookieHandledAfterFirstHover) {
       console.log(
-        "Cookie scrim still blocking. Trying recovery..."
-      );
-
-      await handleCookies(page);
-
-      await page.waitForTimeout(700);
-
-      scrimVisible =
-        await isCookieScrimVisible();
-
-      console.log(
-        "Cookie scrim visible after recovery:",
         scrimVisible
+          ? "Cookie scrim still blocking. Trying recovery..."
+          : "Cookie popup appeared and was closed during hover. Repeating hover to be safe..."
       );
 
       if (scrimVisible) {
-        throw new Error(
-          "Cookie consent overlay is still blocking the page"
+        await handleCookies(page);
+
+        await page.waitForTimeout(700);
+
+        scrimVisible =
+          await isCookieScrimVisible();
+
+        console.log(
+          "Cookie scrim visible after recovery:",
+          scrimVisible
         );
+
+        if (scrimVisible) {
+          throw new Error(
+            "Cookie consent overlay is still blocking the page"
+          );
+        }
       }
 
       // Repeat hover
@@ -451,8 +462,15 @@ async function scrapeProduct({
       "Waiting for price button to unlock (30000ms max)..."
     );
 
-    const priceButtonSelector =
-      'button[aria-label="Check today’s price"]';
+    // FIX #1: the previous hardcoded selector used a curly apostrophe
+    // (’) inside 'button[aria-label="Check today's price"]', which does
+    // NOT match a straight apostrophe (') in the real page's aria-label
+    // (or vice versa) — they are different characters. That mismatch is
+    // why the button was never found and the 30s wait always timed out.
+    // getByRole with a regex sidesteps the apostrophe entirely.
+    const priceButton = page.getByRole("button", {
+      name: /check today.?s price/i
+    });
 
     const unlockStart =
       Date.now();
@@ -464,33 +482,18 @@ async function scrapeProduct({
       30000
     ) {
       try {
-        const state =
-          await page.evaluate(
-            selector => {
-              const button =
-                document.querySelector(
-                  selector
-                );
+        const exists =
+          (await priceButton.count()) > 0;
 
-              if (!button) {
-                return {
-                  exists: false,
-                  disabled: true
-                };
-              }
+        const disabled =
+          exists
+            ? await priceButton
+                .first()
+                .isDisabled()
+                .catch(() => true)
+            : true;
 
-              return {
-                exists: true,
-                disabled: button.disabled
-              };
-            },
-            priceButtonSelector
-          );
-
-        if (
-          state.exists &&
-          !state.disabled
-        ) {
+        if (exists && !disabled) {
           priceButtonUnlocked = true;
           break;
         }
@@ -567,18 +570,13 @@ async function scrapeProduct({
       "Finding price button..."
     );
 
-    const priceButton =
-      page.locator(
-        priceButtonSelector
-      );
-
-    await priceButton.waitFor({
+    await priceButton.first().waitFor({
       state: "visible",
       timeout: 10000
     });
 
     const disabled =
-      await priceButton.isDisabled();
+      await priceButton.first().isDisabled();
 
     console.log(
       "Price button disabled:",
@@ -622,10 +620,10 @@ async function scrapeProduct({
     let clickSuccessful = false;
 
     try {
-      await priceButton.scrollIntoViewIfNeeded();
+      await priceButton.first().scrollIntoViewIfNeeded();
 
       const buttonBox =
-        await priceButton.boundingBox();
+        await priceButton.first().boundingBox();
 
       console.log(
         "Price button bounding box:",
@@ -638,7 +636,7 @@ async function scrapeProduct({
         );
       }
 
-      await priceButton.click({
+      await priceButton.first().click({
         timeout: 10000,
         force: true
       });
@@ -666,7 +664,7 @@ async function scrapeProduct({
       );
 
       const buttonBox =
-        await priceButton.boundingBox();
+        await priceButton.first().boundingBox();
 
       if (!buttonBox) {
         throw new Error(
