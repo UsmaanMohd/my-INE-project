@@ -1,9 +1,78 @@
 const { chromium } = require("playwright");
 const { handleCookies } = require("./cookieHandler");
 
+// PUBLIC ENTRY POINT: this is what the rest of your app calls.
+// It never hangs forever — if the actual scrape logic (runScrapeAttempt)
+// doesn't finish within `timeoutMs`, the watchdog force-closes whatever
+// browser/context/page exist and returns a normal failure object instead
+// of letting the caller wait indefinitely with no result at all.
 async function scrapeProduct({
   productUrl,
-  selectedOption
+  selectedOption,
+  timeoutMs = 90000 // 90s hard cap — tune this if your real scrapes legitimately take longer
+}) {
+  const resources = { browser: null, context: null, page: null };
+  let settled = false;
+
+  const attemptPromise = runScrapeAttempt({
+    productUrl,
+    selectedOption,
+    resources
+  })
+    .then(result => {
+      settled = true;
+      return result;
+    })
+    .catch(error => {
+      settled = true;
+      return { success: false, error: error.message };
+    });
+
+  const watchdogPromise = new Promise(resolve => {
+    setTimeout(async () => {
+      if (settled) return; // real attempt already finished, ignore the watchdog
+
+      console.log(
+        `WATCHDOG: scrape exceeded ${timeoutMs}ms — forcing browser cleanup`
+      );
+
+      try {
+        if (resources.page) {
+          await resources.page
+            .close({ runBeforeUnload: false })
+            .catch(() => {});
+        }
+      } catch {}
+
+      try {
+        if (resources.context) {
+          await resources.context.close().catch(() => {});
+        }
+      } catch {}
+
+      try {
+        if (resources.browser) {
+          await resources.browser.close().catch(() => {});
+        }
+      } catch {}
+
+      resolve({
+        success: false,
+        error: `Scrape timed out after ${timeoutMs}ms (watchdog killed browser)`
+      });
+    }, timeoutMs);
+  });
+
+  return Promise.race([attemptPromise, watchdogPromise]);
+}
+
+// ACTUAL SCRAPE LOGIC — unchanged from before, except browser/context/page
+// are now written onto the shared `resources` object so the watchdog above
+// can reach them and force-close if this function hangs.
+async function runScrapeAttempt({
+  productUrl,
+  selectedOption,
+  resources
 }) {
   console.log("\n================================");
   console.log("SCRAPING:", productUrl);
@@ -40,6 +109,7 @@ async function scrapeProduct({
     ]);
 
     console.log("Chromium launched.");
+    resources.browser = browser; // let the watchdog see it immediately
 
     // ============================================
     // CREATE CONTEXT
@@ -64,6 +134,7 @@ async function scrapeProduct({
     ]);
 
     console.log("Browser context created.");
+    resources.context = context; // let the watchdog see it immediately
 
     // ============================================
     // CREATE PAGE
@@ -88,6 +159,7 @@ async function scrapeProduct({
     ]);
 
     console.log("Browser page created.");
+    resources.page = page; // let the watchdog see it immediately
 
     // ============================================
     // OPEN PRODUCT PAGE
