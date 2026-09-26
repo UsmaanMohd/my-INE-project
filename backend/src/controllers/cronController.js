@@ -24,29 +24,30 @@ async function runScheduledScrape(req, res) {
       .order("id", { ascending: true });
 
     if (error) {
+      console.error(
+        "Failed to fetch tracked products:",
+        error.message
+      );
+
       return res.status(500).json({
         success: false,
-        message: "Failed to fetch tracked products",
-        error: error.message
+        message: "Failed to fetch tracked products"
       });
     }
 
     if (!products || products.length === 0) {
-      return res.status(200).json({
-        success: true,
-        message: "No tracked products found",
-        count: 0
-      });
+      console.log("No tracked products found.");
+
+      // IMPORTANT:
+      // Empty response so cron-job.org receives almost nothing.
+      return res.status(204).end();
     }
 
     /*
-      IMPORTANT:
+      Start scraping in background.
 
-      We start the scraping in the background and immediately
-      return a response to cron-job.org.
-
-      This prevents cron-job.org's 30-second timeout from
-      interrupting our Playwright scraping.
+      cron-job.org only needs to know that the request
+      was accepted successfully.
     */
 
     setImmediate(async () => {
@@ -80,12 +81,14 @@ async function runScheduledScrape(req, res) {
       console.log("========================================\n");
     });
 
-    // Return immediately
-    return res.status(202).json({
-      success: true,
-      message: "Scheduled scrape started in background",
-      count: products.length
-    });
+    /*
+      IMPORTANT:
+      Return NO CONTENT.
+
+      This prevents cron-job.org from receiving
+      a response body and avoids "output too large".
+    */
+    return res.status(204).end();
 
   } catch (error) {
     console.error(
@@ -95,8 +98,7 @@ async function runScheduledScrape(req, res) {
 
     return res.status(500).json({
       success: false,
-      message: "Failed to start scheduled scrape",
-      error: error.message
+      message: "Failed to start scheduled scrape"
     });
   }
 }
