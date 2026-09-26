@@ -1585,110 +1585,109 @@ async function scrapeProduct({
     }
 
     /* =====================================================
-       STEP 15
-       QUOTE LISTENER BEFORE CLICK
-    ===================================================== */
+   STEP 15
+   QUOTE LISTENER BEFORE CLICK
+===================================================== */
 
-    console.log(
-      "[STEP 15] Preparing quote API listener..."
-    );
+console.log(
+  "[STEP 15] Preparing quote API listener..."
+);
 
-    const quotePromise =
-      page.waitForResponse(
-        (response) => {
-          const url =
-            response.url();
+const quotePromise =
+  page.waitForResponse(
+    (response) => {
+      const url =
+        response.url();
 
-          return (
-            url.includes(
-              "/api/v2/items/"
-            ) &&
-            url.includes(
-              "/quote?opt="
-            )
-          );
-        },
-        {
-          timeout: 45000,
-        }
+      return (
+        url.includes(
+          "/api/v2/items/"
+        ) &&
+        url.includes(
+          "/quote"
+        )
       );
-
-    console.log(
-      "[STEP 15] Quote listener ready."
-    );
-
-    /* =====================================================
-       STEP 16
-    ===================================================== */
-
-    console.log(
-      "[STEP 16] Clicking price button..."
-    );
-
-    const clickButton =
-      await getPriceButton(page);
-
-    if (!clickButton) {
-      throw new Error(
-        "Price button not found before click"
-      );
+    },
+    {
+      timeout: 30000,
     }
+  );
 
-    const clickReady =
-      await isPriceButtonReady(
-        clickButton
-      );
+console.log(
+  "[STEP 15] Quote listener ready."
+);
 
-    if (!clickReady) {
-      throw new Error(
-        "Price button is not ready before click"
-      );
-    }
+/* =====================================================
+   STEP 16
+===================================================== */
 
-    await withTimeout(
-      clickButton.click({
-        force: true,
-        timeout: 5000,
-      }),
-      6000,
-      "Price button click timed out"
-    );
+console.log(
+  "[STEP 16] Clicking price button..."
+);
 
-    console.log(
-      "[STEP 16] Playwright click completed."
-    );
+const clickButton =
+  await getPriceButton(page);
 
-    /* =====================================================
-       STEP 17
-    ===================================================== */
+if (!clickButton) {
+  throw new Error(
+    "Price button not found before click"
+  );
+}
 
-    console.log(
-      "[STEP 17] Waiting for quote API..."
-    );
+const clickReady =
+  await isPriceButtonReady(
+    clickButton
+  );
 
-    let quoteResponse;
+if (!clickReady) {
+  throw new Error(
+    "Price button is not ready before click"
+  );
+}
 
-    try {
-      quoteResponse =
-        await quotePromise;
-    } catch (error) {
-      throw new Error(
-        `Quote API did not respond within 45 seconds: ${error.message}`
-      );
-    }
+await withTimeout(
+  clickButton.click({
+    force: true,
+    timeout: 5000,
+  }),
+  6000,
+  "Price button click timed out"
+);
 
-    console.log(
-      "[STEP 17] Quote response received:",
-      quoteResponse.status(),
-      quoteResponse.url()
-    );
+console.log(
+  "[STEP 16] Playwright click completed."
+);
 
-    if (!quoteResponse.ok()) {
-      throw new Error(
-        `Quote API returned HTTP ${quoteResponse.status()}`
-      );
-    }
+/* =====================================================
+   STEP 17
+===================================================== */
 
+console.log(
+  "[STEP 17] Waiting for quote API..."
+);
+
+let quoteResponse;
+
+try {
+  quoteResponse =
+    await quotePromise;
+} catch (error) {
+  throw new Error(
+    `Quote API timeout after 30 seconds: ${error.message}`
+  );
+}
+
+console.log(
+  "[STEP 17] Quote response received:",
+  quoteResponse.status(),
+  quoteResponse.url()
+);
+
+if (!quoteResponse.ok()) {
+  throw new Error(
+    `Quote API returned HTTP ${quoteResponse.status()}`
+  );
+}
     /* =====================================================
        STEP 18
     ===================================================== */
