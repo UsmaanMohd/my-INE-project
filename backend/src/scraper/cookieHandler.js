@@ -2,7 +2,8 @@ async function handleCookies(page) {
   console.log("Checking cookie consent...");
 
   try {
-    await page.waitForTimeout(500);
+    // Small initial wait only.
+    await page.waitForTimeout(300);
 
     const scrim = page.locator(".consent-scrim");
 
@@ -15,23 +16,21 @@ async function handleCookies(page) {
       return true;
     }
 
-    const isBlocking = async () => {
-      return await page
-        .evaluate(() => {
-          const scrimElement =
+    // Check whether scrim is actually blocking interaction.
+    let blocking = false;
+
+    try {
+      blocking = await Promise.race([
+        page.evaluate(() => {
+          const element =
             document.querySelector(".consent-scrim");
 
-          if (!scrimElement) {
+          if (!element) {
             return false;
           }
 
-          const style =
-            window.getComputedStyle(
-              scrimElement
-            );
-
-          const rect =
-            scrimElement.getBoundingClientRect();
+          const style = window.getComputedStyle(element);
+          const rect = element.getBoundingClientRect();
 
           const hidden =
             style.display === "none" ||
@@ -42,11 +41,15 @@ async function handleCookies(page) {
             rect.height === 0;
 
           return !hidden;
-        })
-        .catch(() => false);
-    };
+        }),
 
-    let blocking = await isBlocking();
+        new Promise((resolve) =>
+          setTimeout(() => resolve(false), 3000)
+        )
+      ]);
+    } catch {
+      blocking = false;
+    }
 
     console.log(
       "Consent scrim blocking interaction:",
@@ -57,14 +60,13 @@ async function handleCookies(page) {
       console.log(
         "Consent scrim is not blocking interaction."
       );
-
       return true;
     }
 
     console.log("COOKIE POPUP FOUND");
 
     /*
-     * Try common consent button names.
+     * Find consent button.
      */
     const buttonTexts = [
       /^ALLOW$/i,
@@ -78,203 +80,134 @@ async function handleCookies(page) {
     let consentButton = null;
 
     /*
-     * Search inside the actual consent dialog first.
+     * First search inside dialog.
      */
-    const dialog =
-      page.locator(
-        '[role="dialog"][aria-modal="true"]'
-      ).first();
-
-    const dialogCount =
-      await dialog.count();
-
-    console.log(
-      "Consent dialogs:",
-      dialogCount
-    );
-
-    if (dialogCount > 0) {
-      for (
-        const textPattern of buttonTexts
-      ) {
-        const button =
-          dialog
-            .locator("button")
-            .filter({
-              hasText: textPattern
-            })
-            .first();
-
-        if (
-          await button.count() > 0
-        ) {
-          consentButton = button;
-          break;
-        }
-      }
-    }
-
-    /*
-     * Fallback: search the whole page.
-     */
-    if (!consentButton) {
-      for (
-        const textPattern of buttonTexts
-      ) {
-        const button =
-          page
-            .locator("button")
-            .filter({
-              hasText: textPattern
-            })
-            .first();
-
-        if (
-          await button.count() > 0
-        ) {
-          consentButton = button;
-          break;
-        }
-      }
-    }
-
-    if (consentButton) {
-      console.log(
-        "Consent button found."
-      );
-
-      try {
-        console.log(
-          "Consent button text:",
-          await consentButton.innerText()
-        );
-      } catch {
-        // Ignore text read failure.
-      }
-
-      try {
-        await consentButton.click({
-          force: true,
-          timeout: 5000
-        });
-
-        console.log(
-          "Consent button clicked."
-        );
-      } catch (error) {
-        console.log(
-          "Consent button click failed:",
-          error.message
-        );
-      }
-    } else {
-      console.log(
-        "No consent button found."
-      );
-    }
-
-    /*
-     * Give the page time to remove/update
-     * the consent overlay.
-     */
-    await page.waitForTimeout(700);
-
-    blocking =
-      await isBlocking();
-
-    console.log(
-      "Scrim blocking after consent click:",
-      blocking
-    );
-
-    if (!blocking) {
-      console.log(
-        "COOKIE CONSENT HANDLED SUCCESSFULLY"
-      );
-
-      return true;
-    }
-
-    /*
-     * Fallback 1: Escape.
-     */
-    console.log(
-      "Consent scrim still blocking. Trying Escape..."
-    );
-
     try {
-      await page.keyboard.press(
-        "Escape"
-      );
+      const dialog = page
+        .locator('[role="dialog"][aria-modal="true"]')
+        .first();
+
+      const dialogCount = await dialog.count();
+
+      console.log("Consent dialogs:", dialogCount);
+
+      if (dialogCount > 0) {
+        for (const pattern of buttonTexts) {
+          try {
+            const button = dialog
+              .locator("button")
+              .filter({ hasText: pattern })
+              .first();
+
+            if ((await button.count()) > 0) {
+              consentButton = button;
+              break;
+            }
+          } catch {
+            // Continue searching.
+          }
+        }
+      }
     } catch (error) {
       console.log(
-        "Escape failed:",
+        "Dialog search failed:",
         error.message
       );
     }
 
-    await page.waitForTimeout(500);
+    /*
+     * Fallback: search whole page.
+     */
+    if (!consentButton) {
+      for (const pattern of buttonTexts) {
+        try {
+          const button = page
+            .locator("button")
+            .filter({ hasText: pattern })
+            .first();
 
-    blocking =
-      await isBlocking();
+          if ((await button.count()) > 0) {
+            consentButton = button;
+            break;
+          }
+        } catch {
+          // Continue searching.
+        }
+      }
+    }
 
-    console.log(
-      "Scrim blocking after Escape:",
-      blocking
-    );
+    if (!consentButton) {
+      console.log("No consent button found.");
 
-    if (!blocking) {
-      console.log(
-        "COOKIE CONSENT HANDLED WITH ESCAPE"
-      );
+      /*
+       * Try Escape without waiting for the page.
+       */
+      try {
+        await Promise.race([
+          page.keyboard.press("Escape"),
+          new Promise((resolve) =>
+            setTimeout(resolve, 1000)
+          )
+        ]);
+      } catch {
+        // Ignore.
+      }
 
       return true;
     }
 
+    console.log("Consent button found.");
+
     /*
-     * Fallback 2: try the consent button again.
+     * Read button text with a hard timeout.
      */
-    if (consentButton) {
-      console.log(
-        "Trying consent button again..."
-      );
+    try {
+      const text = await Promise.race([
+        consentButton.innerText(),
+        new Promise((resolve) =>
+          setTimeout(() => resolve("UNKNOWN"), 1000)
+        )
+      ]);
 
-      try {
-        await consentButton.click({
-          force: true,
-          timeout: 3000
-        });
-      } catch (error) {
-        console.log(
-          "Second consent click failed:",
-          error.message
-        );
-      }
-
-      await page.waitForTimeout(700);
-
-      blocking =
-        await isBlocking();
-
-      console.log(
-        "Scrim blocking after second click:",
-        blocking
-      );
-
-      if (!blocking) {
-        console.log(
-          "COOKIE CONSENT HANDLED SUCCESSFULLY"
-        );
-
-        return true;
-      }
+      console.log("Consent button text:", text);
+    } catch {
+      console.log("Could not read consent button text.");
     }
 
+    /*
+     * IMPORTANT:
+     * Click with a very small timeout.
+     *
+     * We DO NOT wait for the overlay to disappear.
+     * We DO NOT run another DOM evaluation after click.
+     *
+     * This prevents Render from hanging here.
+     */
+    try {
+      await consentButton.click({
+        force: true,
+        timeout: 2000,
+        noWaitAfter: true
+      });
+
+      console.log("Consent button clicked.");
+    } catch (error) {
+      console.log(
+        "Consent button click failed:",
+        error.message
+      );
+    }
+
+    /*
+     * Do NOT wait for cookie UI/network.
+     *
+     * Just return immediately.
+     */
     console.log(
-      "WARNING: Cookie scrim is still blocking interaction."
+      "Cookie handler finished without waiting for overlay."
     );
 
-    return false;
+    return true;
 
   } catch (error) {
     console.log(
@@ -282,7 +215,10 @@ async function handleCookies(page) {
       error.message
     );
 
-    return false;
+    /*
+     * Cookie handling must NEVER stop the scraper.
+     */
+    return true;
   }
 }
 
