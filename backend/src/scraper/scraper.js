@@ -22,7 +22,7 @@ function logMemory(label) {
 }
 
 /* =========================================================
-   TEXT NORMALIZATION
+   NORMALIZE TEXT
 ========================================================= */
 
 function normalizeText(text = "") {
@@ -38,34 +38,68 @@ function normalizeText(text = "") {
 
 /* =========================================================
    PRICE EXTRACTION
+   IMPORTANT:
+   We DO NOT use a greedy regex across the whole text.
 ========================================================= */
 
 function extractPrices(text) {
   const normalized = normalizeText(text);
 
-  const matches = normalized.match(
-    /₹\s*[\d,\s]+(?:\.\d+)?/g
-  );
+  const prices = [];
 
-  if (!matches) {
-    return [];
-  }
+  /*
+   * Split around ₹ so that:
+   *
+   * ₹17,10410% saving
+   *
+   * does not become 1710410.
+   *
+   * We then take the numeric portion and stop when
+   * the price clearly transitions into another word/percentage.
+   */
 
-  const prices = matches
-    .map((value) => {
-      const cleaned = value
-        .replace(/[^\d.]/g, "")
-        .trim();
+  const rupeeParts = normalized.split("₹");
 
-      const number = Number(cleaned);
+  for (let i = 1; i < rupeeParts.length; i++) {
+    let part = rupeeParts[i].trim();
 
-      return Number.isFinite(number) ? number : null;
-    })
-    .filter(
-      (value) =>
-        value !== null &&
-        value > 0
+    /*
+     * Remove zero-width characters again for safety.
+     */
+    part = part.replace(/[\u200B-\u200F\u2060\uFEFF]/g, "");
+
+    /*
+     * A valid store price normally consists of:
+     * digits + commas + spaces + optional decimal.
+     *
+     * Example:
+     * 17,104
+     * 17 104
+     * 17,104.50
+     */
+
+    const match = part.match(
+      /^(\d{1,3}(?:[\s,]\d{2,3})+|\d+)(?:\.(\d{1,2}))?/
     );
+
+    if (!match) {
+      continue;
+    }
+
+    const numberString =
+      match[1].replace(/[^\d]/g, "") +
+      (match[2] ? `.${match[2]}` : "");
+
+    const price = Number(numberString);
+
+    if (
+      Number.isFinite(price) &&
+      price > 0 &&
+      price < 100000000
+    ) {
+      prices.push(price);
+    }
+  }
 
   return prices;
 }
@@ -80,12 +114,12 @@ function extractStock(text) {
   const patterns = [
     /SOLD OUT/,
     /OUT OF STOCK/,
-    /AVAILABLE\s*[:\-]?\s*\d+/,
-    /\d+\s*AVAILABLE/,
-    /STOCK\s*[:\-]?\s*\d+\s*REMAINING/,
-    /\d+\s*REMAINING/,
     /LAST FEW\s*[:\-]?\s*\d+/,
     /ONLY\s+\d+\s+LEFT/,
+    /\d+\s*AVAILABLE/,
+    /AVAILABLE\s*[:\-]?\s*\d+/,
+    /STOCK\s*[:\-]?\s*\d+\s*REMAINING/,
+    /\d+\s*REMAINING/,
     /\d+\s+LEFT/,
     /IN STOCK/,
     /AVAILABLE/,
@@ -103,7 +137,7 @@ function extractStock(text) {
 }
 
 /* =========================================================
-   COOKIE HANDLING
+   COOKIE HANDLER
 ========================================================= */
 
 async function safeHandleCookies(page) {
@@ -116,7 +150,10 @@ async function safeHandleCookies(page) {
       "Cookie popup count timed out"
     );
 
-    console.log("Consent popup count:", popupCount);
+    console.log(
+      "Consent popup count:",
+      popupCount
+    );
 
     if (!popupCount) {
       console.log("No cookie popup found.");
@@ -127,25 +164,35 @@ async function safeHandleCookies(page) {
 
     try {
       visible = await withTimeout(
-        page.locator(".consent-scrim").first().isVisible(),
+        page
+          .locator(".consent-scrim")
+          .first()
+          .isVisible(),
         2000,
-        "Cookie visibility check timed out"
+        "Cookie visibility timed out"
       );
     } catch {
       visible = false;
     }
 
     if (!visible) {
-      console.log("Cookie popup exists but is not visible.");
+      console.log(
+        "Cookie popup exists but is not visible."
+      );
       return;
     }
 
-    console.log("Consent scrim blocking interaction: true");
+    console.log(
+      "Consent scrim blocking interaction: true"
+    );
+
     console.log("COOKIE POPUP FOUND");
 
-    const dialog = page.locator(
-      ".consent-dialog, .consent-modal, .consent-scrim"
-    ).first();
+    const dialog = page
+      .locator(
+        ".consent-dialog, .consent-modal, .consent-scrim"
+      )
+      .first();
 
     const buttons = dialog.locator("button");
 
@@ -155,44 +202,52 @@ async function safeHandleCookies(page) {
       "Consent button count timed out"
     );
 
-    console.log("Consent dialogs:", buttonCount);
-
-    if (buttonCount === 0) {
-      console.log("No consent button found.");
-      return;
-    }
+    console.log(
+      "Consent dialogs:",
+      buttonCount
+    );
 
     let selectedButton = null;
 
     for (let i = 0; i < buttonCount; i++) {
       try {
-        const btn = buttons.nth(i);
+        const button = buttons.nth(i);
 
         const text = normalizeText(
           await withTimeout(
-            btn.innerText(),
+            button.innerText(),
             1000,
             "Consent button text timed out"
           )
         );
 
         if (
-          /ALLOW|ACCEPT|AGREE|OK|CONTINUE|GOT IT/i.test(text)
+          /ALLOW|ACCEPT|AGREE|OK|CONTINUE|GOT IT/i.test(
+            text
+          )
         ) {
-          selectedButton = btn;
+          selectedButton = button;
 
-          console.log("Consent button found.");
-          console.log("Consent button text:", text);
+          console.log(
+            "Consent button found."
+          );
+
+          console.log(
+            "Consent button text:",
+            text
+          );
 
           break;
         }
       } catch {
-        // continue searching
+        // continue
       }
     }
 
     if (!selectedButton) {
-      console.log("No suitable consent button found.");
+      console.log(
+        "No suitable consent button found."
+      );
       return;
     }
 
@@ -206,7 +261,9 @@ async function safeHandleCookies(page) {
         "Consent click timed out"
       );
 
-      console.log("Consent button clicked.");
+      console.log(
+        "Consent button clicked."
+      );
     } catch (error) {
       console.log(
         "Consent click warning:",
@@ -214,8 +271,6 @@ async function safeHandleCookies(page) {
       );
     }
 
-    // IMPORTANT:
-    // Do NOT wait for overlay animation/disappearance.
     await delay(300);
 
     console.log(
@@ -230,7 +285,7 @@ async function safeHandleCookies(page) {
 }
 
 /* =========================================================
-   COOKIE SCRIM CHECK
+   COOKIE SCRIM
 ========================================================= */
 
 async function getCookieScrimVisible(page) {
@@ -249,7 +304,7 @@ async function getCookieScrimVisible(page) {
 }
 
 /* =========================================================
-   OFFER PANEL FINDER
+   OFFER PANEL
 ========================================================= */
 
 async function getOfferPanel(page) {
@@ -261,7 +316,8 @@ async function getOfferPanel(page) {
 
   for (const selector of selectors) {
     try {
-      const locator = page.locator(selector).first();
+      const locator =
+        page.locator(selector).first();
 
       const count = await withTimeout(
         locator.count(),
@@ -273,7 +329,7 @@ async function getOfferPanel(page) {
         return locator;
       }
     } catch {
-      // try next selector
+      // continue
     }
   }
 
@@ -282,11 +338,12 @@ async function getOfferPanel(page) {
 
 /* =========================================================
    SAFE HOVER
-   MAIN FIX
 ========================================================= */
 
 async function performSafeHover(page, label) {
-  console.log(`[${label}] Starting safe hover...`);
+  console.log(
+    `[${label}] Starting safe hover...`
+  );
 
   const panel = await getOfferPanel(page);
 
@@ -300,7 +357,6 @@ async function performSafeHover(page, label) {
     `[${label}] Offer panel found.`
   );
 
-  // First try normal Playwright hover.
   try {
     await withTimeout(
       panel.hover({
@@ -308,7 +364,7 @@ async function performSafeHover(page, label) {
         timeout: 3000,
       }),
       4000,
-      `[${label}] panel.hover timed out`
+      `[${label}] Direct hover timed out`
     );
 
     console.log(
@@ -321,7 +377,6 @@ async function performSafeHover(page, label) {
     );
   }
 
-  // Get bounding box safely.
   let box = null;
 
   try {
@@ -339,7 +394,7 @@ async function performSafeHover(page, label) {
 
   if (!box) {
     console.log(
-      `[${label}] No bounding box. Direct hover was attempted.`
+      `[${label}] No bounding box.`
     );
 
     await delay(300);
@@ -351,25 +406,11 @@ async function performSafeHover(page, label) {
     `[${label}] Offer panel position found.`
   );
 
-  /*
-   * OLD CODE:
-   * 120 mouse movements
-   *
-   * NEW CODE:
-   * only 20 controlled movements.
-   * This prevents Render from getting stuck.
-   */
-
   const points = [
-    [0.10, 0.10],
     [0.20, 0.20],
-    [0.30, 0.30],
     [0.40, 0.40],
-    [0.50, 0.50],
     [0.60, 0.60],
-    [0.70, 0.70],
     [0.80, 0.80],
-    [0.90, 0.90],
     [0.50, 0.20],
     [0.50, 0.40],
     [0.50, 0.60],
@@ -378,8 +419,6 @@ async function performSafeHover(page, label) {
     [0.40, 0.50],
     [0.60, 0.50],
     [0.80, 0.50],
-    [0.30, 0.70],
-    [0.70, 0.30],
     [0.50, 0.50],
   ];
 
@@ -388,11 +427,11 @@ async function performSafeHover(page, label) {
   );
 
   for (const [rx, ry] of points) {
-    const x = box.x + box.width * rx;
-    const y = box.y + box.height * ry;
-
     try {
-      await page.mouse.move(x, y);
+      await page.mouse.move(
+        box.x + box.width * rx,
+        box.y + box.height * ry
+      );
     } catch (error) {
       console.log(
         `[${label}] Mouse movement warning:`,
@@ -402,7 +441,7 @@ async function performSafeHover(page, label) {
       break;
     }
 
-    await delay(15);
+    await delay(20);
   }
 
   console.log(
@@ -426,7 +465,8 @@ async function getPriceButton(page) {
 
   for (const selector of selectors) {
     try {
-      const button = page.locator(selector).first();
+      const button =
+        page.locator(selector).first();
 
       const count = await withTimeout(
         button.count(),
@@ -453,21 +493,23 @@ async function waitForPriceButton(page) {
   const start = Date.now();
 
   while (Date.now() - start < 15000) {
-    const button = await getPriceButton(page);
+    const button =
+      await getPriceButton(page);
 
     if (button) {
       try {
-        const disabled = await withTimeout(
-          button.isDisabled(),
-          1500,
-          "Price button disabled check timed out"
-        );
+        const disabled =
+          await withTimeout(
+            button.isDisabled(),
+            1500,
+            "Price button state timed out"
+          );
 
         if (!disabled) {
           return button;
         }
       } catch {
-        // continue polling
+        // continue
       }
     }
 
@@ -484,11 +526,13 @@ async function waitForPriceButton(page) {
 ========================================================= */
 
 async function readOfferPanel(page) {
-  const panel = await getOfferPanel(page);
+  const panel =
+    await getOfferPanel(page);
 
   if (!panel) {
     return {
       text: "",
+      prices: [],
       price: null,
       stock: null,
     };
@@ -499,14 +543,14 @@ async function readOfferPanel(page) {
   try {
     text = await withTimeout(
       panel.textContent(),
-      2000,
-      "Offer panel text read timed out"
+      2500,
+      "Offer panel textContent timed out"
     );
   } catch {
     try {
       text = await withTimeout(
         panel.innerText(),
-        2000,
+        2500,
         "Offer panel innerText timed out"
       );
     } catch {
@@ -516,8 +560,11 @@ async function readOfferPanel(page) {
 
   text = normalizeText(text);
 
-  const prices = extractPrices(text);
-  const stock = extractStock(text);
+  const prices =
+    extractPrices(text);
+
+  const stock =
+    extractStock(text);
 
   return {
     text,
@@ -531,24 +578,54 @@ async function readOfferPanel(page) {
 }
 
 /* =========================================================
-   WAIT FOR OFFER RESULT
+   WAIT FOR QUOTE + DOM
+   MAIN FIX FOR PRODUCT 2
 ========================================================= */
 
 async function waitForOfferResult(
   page,
-  timeoutMs = 25000
+  quotePromise,
+  timeoutMs = 60000
 ) {
   console.log(
-    `[OFFER] Polling offer panel for up to ${timeoutMs}ms...`
+    `[OFFER] Waiting up to ${timeoutMs}ms for quote + offer data...`
   );
 
   const start = Date.now();
+
+  let quoteResponse = null;
+  let quoteFinished = false;
+
+  /*
+   * Quote API is now allowed to take time.
+   * We do not fail just because it takes 5–10 seconds.
+   */
+
+  quotePromise
+    .then((response) => {
+      quoteResponse = response;
+      quoteFinished = true;
+
+      console.log(
+        "[OFFER] Quote API completed with status:",
+        response.status()
+      );
+    })
+    .catch((error) => {
+      quoteFinished = true;
+
+      console.log(
+        "[OFFER] Quote API warning:",
+        error.message
+      );
+    });
 
   let lastText = "";
 
   while (Date.now() - start < timeoutMs) {
     try {
-      const result = await readOfferPanel(page);
+      const result =
+        await readOfferPanel(page);
 
       lastText = result.text;
 
@@ -562,19 +639,24 @@ async function waitForOfferResult(
 
         return result;
       }
-
-      if (
-        result.price !== null ||
-        result.stock !== null
-      ) {
-        console.log(
-          "[OFFER] Partial result detected. Continuing..."
-        );
-      }
     } catch (error) {
       console.log(
-        "[OFFER] Poll warning:",
+        "[OFFER] Read warning:",
         error.message
+      );
+    }
+
+    /*
+     * Once quote has completed, give DOM another
+     * short period to render.
+     */
+
+    if (
+      quoteFinished &&
+      Date.now() - start > 8000
+    ) {
+      console.log(
+        "[OFFER] Quote completed. Continuing DOM polling..."
       );
     }
 
@@ -582,8 +664,9 @@ async function waitForOfferResult(
   }
 
   throw new Error(
-    "Offer panel did not provide complete price + stock data within " +
-      `${timeoutMs}ms. Last text: ${lastText.slice(0, 500)}`
+    "Offer data timeout after 60 seconds. " +
+      `Quote finished: ${quoteFinished}. ` +
+      `Last panel text: ${lastText.slice(0, 500)}`
   );
 }
 
@@ -600,16 +683,29 @@ async function scrapeProduct({
   let page = null;
 
   try {
-    console.log("\n================================");
-    console.log("SCRAPING:", productUrl);
-    console.log("OPTION:", selectedOption);
-    console.log("================================\n");
+    console.log(
+      "\n================================"
+    );
 
-    /* ---------------------------------------------
-       STEP 1
-    --------------------------------------------- */
+    console.log(
+      "SCRAPING:",
+      productUrl
+    );
 
-    console.log("[STEP 1] Launching Chromium...");
+    console.log(
+      "OPTION:",
+      selectedOption
+    );
+
+    console.log(
+      "================================\n"
+    );
+
+    /* STEP 1 */
+
+    console.log(
+      "[STEP 1] Launching Chromium..."
+    );
 
     logMemory("before-browser");
 
@@ -617,6 +713,7 @@ async function scrapeProduct({
       chromium.launch({
         headless:
           process.env.HEADLESS !== "false",
+
         args: [
           "--no-sandbox",
           "--disable-setuid-sandbox",
@@ -631,13 +728,13 @@ async function scrapeProduct({
       "Chromium launch timed out"
     );
 
-    console.log("[STEP 1] Chromium launched.");
+    console.log(
+      "[STEP 1] Chromium launched."
+    );
 
     logMemory("after-browser");
 
-    /* ---------------------------------------------
-       STEP 2
-    --------------------------------------------- */
+    /* STEP 2 */
 
     console.log(
       "[STEP 2] Creating browser context..."
@@ -649,6 +746,7 @@ async function scrapeProduct({
           width: 1366,
           height: 768,
         },
+
         userAgent:
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/153 Safari/537.36",
       }),
@@ -660,9 +758,7 @@ async function scrapeProduct({
       "[STEP 2] Browser context created."
     );
 
-    /* ---------------------------------------------
-       STEP 3
-    --------------------------------------------- */
+    /* STEP 3 */
 
     console.log(
       "[STEP 3] Creating browser page..."
@@ -678,9 +774,7 @@ async function scrapeProduct({
       "[STEP 3] Browser page created."
     );
 
-    /* ---------------------------------------------
-       STEP 4
-    --------------------------------------------- */
+    /* STEP 4 */
 
     console.log(
       "[STEP 4] Installing network diagnostics..."
@@ -700,27 +794,11 @@ async function scrapeProduct({
       }
     });
 
-    page.on("response", (response) => {
-      const url = response.url();
-
-      if (
-        url.includes("/api/v2/items/")
-      ) {
-        console.log(
-          "<<< QUOTE RESPONSE:",
-          response.status(),
-          url
-        );
-      }
-    });
-
     console.log(
       "[STEP 4] Network diagnostics ready."
     );
 
-    /* ---------------------------------------------
-       STEP 5
-    --------------------------------------------- */
+    /* STEP 5 */
 
     console.log(
       "[STEP 5] Opening product page..."
@@ -749,65 +827,46 @@ async function scrapeProduct({
       "[STEP 5] Initial page preparation completed."
     );
 
-    /* ---------------------------------------------
-       STEP 6
-    --------------------------------------------- */
+    /* STEP 6 */
 
     console.log(
       "[STEP 6] Checking cookie consent before option selection..."
     );
 
-    console.log("[STEP 6] Cookie handling START");
+    console.log(
+      "[STEP 6] Cookie handling START"
+    );
 
     await safeHandleCookies(page);
 
-    console.log("[STEP 6] Cookie handling END");
+    console.log(
+      "[STEP 6] Cookie handling END"
+    );
+
     console.log(
       "[STEP 6] Cookie handling completed."
     );
 
-    /* ---------------------------------------------
-       STEP 6A / 6B
-    --------------------------------------------- */
-
-    console.log(
-      "[STEP 6A] Moving to option selection..."
-    );
-
-    await delay(500);
-
-    console.log(
-      "[STEP 6B] Delay completed."
-    );
-
-    /* ---------------------------------------------
-       STEP 7
-    --------------------------------------------- */
+    /* STEP 7 */
 
     console.log(
       "[STEP 7] Selecting option:",
       selectedOption
     );
 
-    console.log(
-      "[STEP 7A] Creating option locator..."
-    );
+    const optionLocator =
+      page
+        .locator("button")
+        .filter({
+          hasText: selectedOption,
+        });
 
-    const optionLocator = page
-      .locator("button")
-      .filter({
-        hasText: selectedOption,
-      });
-
-    console.log(
-      "[STEP 7B] Option locator created."
-    );
-
-    const optionCount = await withTimeout(
-      optionLocator.count(),
-      3000,
-      "Option button count timed out"
-    );
+    const optionCount =
+      await withTimeout(
+        optionLocator.count(),
+        3000,
+        "Option button count timed out"
+      );
 
     console.log(
       "[STEP 7C] Matching option buttons:",
@@ -820,11 +879,8 @@ async function scrapeProduct({
       );
     }
 
-    const optionButton = optionLocator.first();
-
-    console.log(
-      "[STEP 7D] Matching option buttons: 1"
-    );
+    const optionButton =
+      optionLocator.first();
 
     await withTimeout(
       optionButton.waitFor({
@@ -832,7 +888,7 @@ async function scrapeProduct({
         timeout: 5000,
       }),
       6000,
-      "Option button visibility timed out"
+      "Option visibility timed out"
     );
 
     console.log(
@@ -849,7 +905,7 @@ async function scrapeProduct({
         timeout: 5000,
       }),
       6000,
-      "Option button click timed out"
+      "Option click timed out"
     );
 
     console.log(
@@ -863,23 +919,18 @@ async function scrapeProduct({
 
     await delay(500);
 
-    /* ---------------------------------------------
-       STEP 8
-    --------------------------------------------- */
+    /* STEP 8 */
 
     console.log(
       "[STEP 8] Preparing offer panel..."
     );
 
-    console.log(
-      "[STEP 8A] Waiting for offer panel..."
-    );
-
-    const offerPanel = await getOfferPanel(page);
+    const offerPanel =
+      await getOfferPanel(page);
 
     if (!offerPanel) {
       throw new Error(
-        "Offer panel not found after selecting option"
+        "Offer panel not found"
       );
     }
 
@@ -887,9 +938,7 @@ async function scrapeProduct({
       "[STEP 8B] Offer panel found."
     );
 
-    /* ---------------------------------------------
-       STEP 9
-    --------------------------------------------- */
+    /* STEP 9 */
 
     console.log(
       "[STEP 9] Performing first safe hover..."
@@ -906,30 +955,16 @@ async function scrapeProduct({
 
     logMemory("after-first-hover");
 
-    /* ---------------------------------------------
-       STEP 10
-    --------------------------------------------- */
+    /* STEP 10 */
 
     console.log(
       "[STEP 10] Checking cookie consent after hover..."
     );
 
-    console.log(
-      "[STEP 10] Cookie handling START"
-    );
-
     await safeHandleCookies(page);
 
     console.log(
-      "[STEP 10] Cookie handling END"
-    );
-
-    console.log(
       "[STEP 10] Cookie handling completed."
-    );
-
-    console.log(
-      "[STEP 10] Checking cookie scrim..."
     );
 
     const scrimVisible =
@@ -940,11 +975,7 @@ async function scrapeProduct({
       scrimVisible
     );
 
-    /* ---------------------------------------------
-       STEP 11
-       IMPORTANT:
-       NO 120-MOVEMENT HOVER
-    --------------------------------------------- */
+    /* STEP 11 */
 
     console.log(
       "[STEP 11] Performing short recovery hover..."
@@ -959,9 +990,7 @@ async function scrapeProduct({
       "[STEP 11] Recovery hover completed."
     );
 
-    /* ---------------------------------------------
-       STEP 12
-    --------------------------------------------- */
+    /* STEP 12 */
 
     console.log(
       "[STEP 12] Waiting for price button..."
@@ -974,9 +1003,7 @@ async function scrapeProduct({
       "[STEP 12] Price button unlocked."
     );
 
-    /* ---------------------------------------------
-       STEP 13
-    --------------------------------------------- */
+    /* STEP 13 */
 
     console.log(
       "[STEP 13] Final cookie check..."
@@ -991,16 +1018,10 @@ async function scrapeProduct({
     );
 
     if (finalScrim) {
-      console.log(
-        "[STEP 13] Cookie popup still visible. Handling again..."
-      );
-
       await safeHandleCookies(page);
     }
 
-    /* ---------------------------------------------
-       STEP 14
-    --------------------------------------------- */
+    /* STEP 14 */
 
     console.log(
       "[STEP 14] Finding price button..."
@@ -1011,7 +1032,7 @@ async function scrapeProduct({
 
     if (!finalButton) {
       throw new Error(
-        "Price button disappeared before click"
+        "Price button disappeared"
       );
     }
 
@@ -1019,7 +1040,7 @@ async function scrapeProduct({
       await withTimeout(
         finalButton.isDisabled(),
         2000,
-        "Price button disabled check timed out"
+        "Price button state timed out"
       );
 
     console.log(
@@ -1033,45 +1054,38 @@ async function scrapeProduct({
       );
     }
 
-    /* ---------------------------------------------
-       STEP 15
-    --------------------------------------------- */
+    /* STEP 15 */
 
     console.log(
       "[STEP 15] Preparing quote API diagnostic..."
     );
 
-    let quoteResponseSeen = false;
+    /*
+     * IMPORTANT:
+     * Create the listener BEFORE clicking.
+     */
 
-    const responseListener = (response) => {
-      const url = response.url();
+    const quotePromise =
+      page.waitForResponse(
+        (response) => {
+          const url =
+            response.url();
 
-      if (
-        url.includes("/api/v2/items/") &&
-        url.includes("/quote?opt=")
-      ) {
-        quoteResponseSeen = true;
-
-        console.log(
-          "[STEP 15] Quote response observed:",
-          response.status(),
-          url
-        );
-      }
-    };
-
-    page.on(
-      "response",
-      responseListener
-    );
+          return (
+            url.includes("/api/v2/items/") &&
+            url.includes("/quote?opt=")
+          );
+        },
+        {
+          timeout: 60000,
+        }
+      );
 
     console.log(
-      "[STEP 15] Diagnostic ready."
+      "[STEP 15] Quote listener ready."
     );
 
-    /* ---------------------------------------------
-       STEP 16
-    --------------------------------------------- */
+    /* STEP 16 */
 
     console.log(
       "[STEP 16] Clicking price button..."
@@ -1090,42 +1104,52 @@ async function scrapeProduct({
       "[STEP 16] Playwright click completed."
     );
 
-    /* ---------------------------------------------
-       STEP 17
-    --------------------------------------------- */
+    /* STEP 17 */
 
     console.log(
-      "[STEP 17] Waiting for offer panel to update..."
+      "[STEP 17] Waiting for quote API..."
     );
 
-    await delay(1000);
+    /*
+     * DO NOT wait only 1 second.
+     * The store is demonstrably slow.
+     */
+
+    const quoteResponse =
+      await quotePromise;
 
     console.log(
-      "[STEP 17] Quote response observed:",
-      quoteResponseSeen
+      "[STEP 17] Quote response received:",
+      quoteResponse.status(),
+      quoteResponse.url()
     );
 
-    /* ---------------------------------------------
-       STEP 18
-    --------------------------------------------- */
+    if (
+      !quoteResponse.ok()
+    ) {
+      throw new Error(
+        `Quote API returned HTTP ${quoteResponse.status()}`
+      );
+    }
+
+    /* STEP 18 */
 
     console.log(
-      "[STEP 18] Polling offer panel data..."
+      "[STEP 18] Waiting for rendered offer data..."
     );
 
     const offerResult =
       await waitForOfferResult(
         page,
-        25000
+        Promise.resolve(quoteResponse),
+        60000
       );
 
     console.log(
       "[STEP 18] Valid offer data detected."
     );
 
-    /* ---------------------------------------------
-       STEP 19
-    --------------------------------------------- */
+    /* STEP 19 */
 
     console.log(
       "[STEP 19] Reading offer panel..."
@@ -1139,18 +1163,14 @@ async function scrapeProduct({
       offerResult.text
     );
 
-    /* ---------------------------------------------
-       STEP 20
-    --------------------------------------------- */
+    /* STEP 20 */
 
     console.log(
       "[STEP 20] Extracting price..."
     );
 
     const prices =
-      extractPrices(
-        offerResult.text
-      );
+      offerResult.prices;
 
     console.log(
       "Detected prices:",
@@ -1165,26 +1185,17 @@ async function scrapeProduct({
       );
     }
 
-    /*
-     * Last displayed rupee price is the
-     * current selling price on this store.
-     */
-
     const price =
       prices[prices.length - 1];
 
-    /* ---------------------------------------------
-       STEP 21
-    --------------------------------------------- */
+    /* STEP 21 */
 
     console.log(
       "[STEP 21] Extracting stock..."
     );
 
     const stock =
-      extractStock(
-        offerResult.text
-      );
+      offerResult.stock;
 
     if (!stock) {
       throw new Error(
@@ -1204,11 +1215,6 @@ async function scrapeProduct({
 
     console.log(
       "\nSCRAPE SUCCESS\n"
-    );
-
-    page.removeListener(
-      "response",
-      responseListener
     );
 
     return {
