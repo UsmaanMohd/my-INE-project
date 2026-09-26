@@ -99,7 +99,7 @@ function App() {
     }
   }
 
-  async function handleSearch(event) {
+  function handleSearch(event) {
     const value = event.target.value;
 
     setSearchQuery(value);
@@ -107,44 +107,78 @@ function App() {
     setSelectedProduct(null);
     setProductOptions([]);
     setSelectedOption("");
+  }
 
-    if (value.trim().length < 2) {
+  /*
+   * Search fix:
+   * - waits 500ms before making request
+   * - prevents request on every keystroke
+   * - ignores old/stale requests
+   * - clears old error when latest request succeeds
+   */
+  useEffect(() => {
+    const query = searchQuery.trim();
+
+    if (query.length < 2) {
       setSearchResults([]);
+      setSearching(false);
       return;
     }
 
-    try {
-      setSearching(true);
+    let cancelled = false;
 
-      const response = await axios.get(
-        `${API_URL}/catalog/search`,
-        {
-          params: {
-            q: value.trim()
-          },
-          timeout: 30000
+    setSearching(true);
+    setSearchError("");
+
+    const timer = setTimeout(async () => {
+      try {
+        const response = await axios.get(
+          `${API_URL}/catalog/search`,
+          {
+            params: {
+              q: query
+            },
+            timeout: 30000
+          }
+        );
+
+        if (cancelled) {
+          return;
         }
-      );
 
-      setSearchResults(
-        response.data.data || []
-      );
-    } catch (err) {
-      console.error(
-        "Catalog search error:",
-        err
-      );
+        setSearchResults(
+          response.data.data || []
+        );
 
-      setSearchResults([]);
+        setSearchError("");
+      } catch (err) {
+        if (cancelled) {
+          return;
+        }
 
-      setSearchError(
-        err.response?.data?.message ||
-          "Unable to search products."
-      );
-    } finally {
-      setSearching(false);
-    }
-  }
+        console.error(
+          "Catalog search error:",
+          err
+        );
+
+        setSearchResults([]);
+
+        setSearchError(
+          err.response?.data?.message ||
+            "Unable to search products."
+        );
+      } finally {
+        if (!cancelled) {
+          setSearching(false);
+        }
+      }
+    }, 500);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [searchQuery]);
 
   async function selectCatalogProduct(
     product
