@@ -27,7 +27,12 @@ async function scrapeProduct({
       }),
       new Promise((_, reject) =>
         setTimeout(
-          () => reject(new Error("Chromium launch timed out after 20 seconds")),
+          () =>
+            reject(
+              new Error(
+                "Chromium launch timed out after 20 seconds"
+              )
+            ),
           20000
         )
       )
@@ -45,7 +50,12 @@ async function scrapeProduct({
       browser.newContext(),
       new Promise((_, reject) =>
         setTimeout(
-          () => reject(new Error("Browser context creation timed out")),
+          () =>
+            reject(
+              new Error(
+                "Browser context creation timed out"
+              )
+            ),
           10000
         )
       )
@@ -63,7 +73,12 @@ async function scrapeProduct({
       context.newPage(),
       new Promise((_, reject) =>
         setTimeout(
-          () => reject(new Error("Browser page creation timed out")),
+          () =>
+            reject(
+              new Error(
+                "Browser page creation timed out"
+              )
+            ),
           10000
         )
       )
@@ -98,7 +113,9 @@ async function scrapeProduct({
     // HANDLE COOKIE POPUP
     // ============================================
 
-    console.log("Checking cookie consent before option selection...");
+    console.log(
+      "Checking cookie consent before option selection..."
+    );
 
     await handleCookies(page);
 
@@ -315,6 +332,7 @@ async function scrapeProduct({
       }
 
       // Repeat hover after cookie recovery
+
       console.log(
         "Repeating hover movements after cookie handling..."
       );
@@ -510,15 +528,59 @@ async function scrapeProduct({
     // ============================================
 
     console.log(
-      "Clicking price button..."
+      "Clicking price button using DOM..."
     );
 
-    await priceButton.click({
-      timeout: 10000
-    });
+    /*
+     * IMPORTANT:
+     * Playwright's priceButton.click() was hanging
+     * on the Render environment.
+     *
+     * So we trigger the native DOM click directly.
+     */
+
+    const clickResult =
+      await page.evaluate(() => {
+        const button =
+          document.querySelector(
+            'button[aria-label="Check today’s price"]'
+          );
+
+        if (!button) {
+          return {
+            success: false,
+            reason: "Price button not found"
+          };
+        }
+
+        if (button.disabled) {
+          return {
+            success: false,
+            reason: "Price button is disabled"
+          };
+        }
+
+        button.click();
+
+        return {
+          success: true
+        };
+      });
 
     console.log(
-      "Price button clicked"
+      "DOM click result:",
+      clickResult
+    );
+
+    if (!clickResult.success) {
+      throw new Error(
+        clickResult.reason ||
+        "DOM click failed"
+      );
+    }
+
+    console.log(
+      "Price button clicked successfully."
     );
 
     // ============================================
@@ -635,7 +697,9 @@ async function scrapeProduct({
         /[\uFF10-\uFF19]/g,
         char =>
           String.fromCharCode(
-            char.charCodeAt(0) - 0xFF10 + 48
+            char.charCodeAt(0) -
+            0xFF10 +
+            48
           )
       );
 
