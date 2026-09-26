@@ -1,6 +1,26 @@
 const { chromium } = require("playwright");
 const { handleCookies } = require("./cookieHandler");
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function safeClose(browser) {
+  if (!browser) return;
+
+  try {
+    await Promise.race([
+      browser.close(),
+      sleep(5000)
+    ]);
+  } catch (error) {
+    console.error(
+      "Browser close error:",
+      error.message
+    );
+  }
+}
+
 async function scrapeProduct({
   productUrl,
   selectedOption
@@ -10,17 +30,22 @@ async function scrapeProduct({
   console.log("OPTION:", selectedOption);
   console.log("================================");
 
-  const browser = await chromium.launch({
-    headless: process.env.HEADLESS === "true"
-  });
-
-  const context = await browser.newContext();
-  const page = await context.newPage();
+  let browser = null;
 
   try {
+    browser = await chromium.launch({
+      headless: process.env.HEADLESS === "true"
+    });
+
+    const context = await browser.newContext();
+
+    const page = await context.newPage();
+
     // ============================================
     // OPEN PRODUCT PAGE
     // ============================================
+
+    console.log("Opening product page...");
 
     await page.goto(productUrl, {
       waitUntil: "domcontentloaded",
@@ -30,7 +55,7 @@ async function scrapeProduct({
     await page.waitForTimeout(2000);
 
     // ============================================
-    // GENERIC COOKIE HANDLING
+    // COOKIE HANDLING
     // ============================================
 
     console.log(
@@ -150,39 +175,114 @@ async function scrapeProduct({
       selectedOption
     );
 
-    await page.waitForTimeout(500);
+    // Give the page a short bounded delay.
+    await sleep(500);
+
+    console.log(
+      "Option selection completed. Preparing offer panel..."
+    );
 
     // ============================================
     // FIND OFFER PANEL
     // ============================================
 
-    const offerPanel =
+    let offerPanel =
       page.locator(
         ".offer-panel.offer-locked"
-      );
+      ).first();
 
     console.log(
-      "Performing hover movements..."
+      "Waiting for locked offer panel..."
     );
+
+    try {
+      await offerPanel.waitFor({
+        state: "visible",
+        timeout: 15000
+      });
+
+      console.log(
+        "Locked offer panel found."
+      );
+    } catch (error) {
+      console.log(
+        "Locked offer panel not found. Trying generic offer panel..."
+      );
+
+      offerPanel =
+        page.locator(
+          ".offer-panel"
+        ).first();
+
+      await offerPanel.waitFor({
+        state: "visible",
+        timeout: 10000
+      });
+
+      console.log(
+        "Generic offer panel found."
+      );
+    }
+
+    // ============================================
+    // GET OFFER PANEL POSITION
+    // ============================================
+
+    console.log(
+      "Getting offer panel position..."
+    );
+
+    let currentBox = null;
+
+    try {
+      currentBox =
+        await Promise.race([
+          offerPanel.boundingBox(),
+          new Promise((_, reject) =>
+            setTimeout(
+              () =>
+                reject(
+                  new Error(
+                    "Offer panel bounding box timed out"
+                  )
+                ),
+              10000
+            )
+          )
+        ]);
+    } catch (error) {
+      throw new Error(
+        `Unable to get offer panel position: ${error.message}`
+      );
+    }
+
+    if (!currentBox) {
+      throw new Error(
+        "Offer panel bounding box not found"
+      );
+    }
+
+    console.log(
+      "Offer panel position found."
+    );
+
+    const startX =
+      currentBox.x +
+      currentBox.width / 2;
+
+    const startY =
+      currentBox.y +
+      currentBox.height / 2;
+
+    // ============================================
+    // HOVER MOVEMENTS
+    // ============================================
 
     const performHoverMovements =
       async () => {
-        const currentBox =
-          await offerPanel.boundingBox();
-
-        if (!currentBox) {
-          throw new Error(
-            "Offer panel bounding box not found during hover"
-          );
-        }
-
-        const startX =
-          currentBox.x +
-          currentBox.width / 2;
-
-        const startY =
-          currentBox.y +
-          currentBox.height / 2;
+        console.log(
+          "Performing hover movements..."
+        );
 
         for (let i = 0; i < 120; i++) {
           const x =
@@ -195,9 +295,12 @@ async function scrapeProduct({
             Math.cos(i / 5) * 20 +
             (i % 3);
 
-          await page.mouse.move(x, y);
+          await page.mouse.move(
+            x,
+            y
+          );
 
-          await page.waitForTimeout(50);
+          await sleep(50);
         }
 
         console.log(
@@ -211,7 +314,7 @@ async function scrapeProduct({
 
     await performHoverMovements();
 
-    await page.waitForTimeout(500);
+    await sleep(500);
 
     // ============================================
     // COOKIE MAY APPEAR AFTER HOVER
@@ -223,7 +326,7 @@ async function scrapeProduct({
 
     await handleCookies(page);
 
-    await page.waitForTimeout(1000);
+    await sleep(1000);
 
     cookieBlocking =
       await isCookieBlocking();
@@ -240,7 +343,7 @@ async function scrapeProduct({
     }
 
     // ============================================
-    // SECOND HOVER AFTER COOKIE HANDLING
+    // SECOND HOVER
     // ============================================
 
     console.log(
@@ -249,7 +352,7 @@ async function scrapeProduct({
 
     await performHoverMovements();
 
-    await page.waitForTimeout(2000);
+    await sleep(2000);
 
     // ============================================
     // WAIT FOR PRICE BUTTON
@@ -291,7 +394,7 @@ async function scrapeProduct({
 
     await handleCookies(page);
 
-    await page.waitForTimeout(500);
+    await sleep(500);
 
     cookieBlocking =
       await isCookieBlocking();
@@ -331,12 +434,12 @@ async function scrapeProduct({
     }
 
     // ============================================
-    // WAIT FOR QUOTE API
+    // QUOTE API
     // ============================================
 
     const quoteResponsePromise =
       page.waitForResponse(
-        response => {
+        (response) => {
           const url =
             response.url();
 
@@ -369,11 +472,15 @@ async function scrapeProduct({
       "Quote API response received"
     );
 
-    await page.waitForTimeout(1000);
+    await sleep(1000);
 
     // ============================================
     // WAIT FOR OFFER PANEL DATA
     // ============================================
+
+    console.log(
+      "Waiting for offer panel data..."
+    );
 
     await page.waitForFunction(
       () => {
@@ -395,8 +502,8 @@ async function scrapeProduct({
           /OUT OF STOCK/i.test(text) ||
           /AVAILABLE/i.test(text) ||
           /REMAINING/i.test(text) ||
-          /LAST FEW/i.test(text) ||
           /LEFT/i.test(text) ||
+          /LAST FEW/i.test(text) ||
           /CHECK AGAIN/i.test(text)
         );
       },
@@ -422,7 +529,9 @@ async function scrapeProduct({
       "\n========== OFFER PANEL =========="
     );
 
-    console.log(panelText);
+    console.log(
+      panelText
+    );
 
     // ============================================
     // CLEAN TEXT
@@ -445,7 +554,7 @@ async function scrapeProduct({
         .trim();
 
     // ============================================
-    // GENERIC PRICE EXTRACTION
+    // PRICE EXTRACTION
     // ============================================
 
     const priceMatches =
@@ -467,17 +576,6 @@ async function scrapeProduct({
       priceMatches
     );
 
-    /*
-     * The store can display:
-     *
-     * Original price
-     * Member price
-     * Current selling price
-     *
-     * The final ₹ amount is used as
-     * the current/selling price.
-     */
-
     const priceText =
       priceMatches[
         priceMatches.length - 1
@@ -491,22 +589,21 @@ async function scrapeProduct({
         )
       );
 
-    if (!Number.isFinite(price)) {
+    if (
+      !Number.isFinite(price)
+    ) {
       throw new Error(
         "Invalid price extracted"
       );
     }
 
     // ============================================
-    // GENERIC STOCK EXTRACTION
+    // STOCK EXTRACTION
     // ============================================
 
     let stock = null;
 
-    /*
-     * SOLD OUT
-     */
-
+    // SOLD OUT
     if (
       /SOLD OUT/i.test(
         cleanPanelText
@@ -516,10 +613,7 @@ async function scrapeProduct({
         "SOLD OUT";
     }
 
-    /*
-     * OUT OF STOCK
-     */
-
+    // OUT OF STOCK
     if (!stock) {
       if (
         /OUT OF STOCK/i.test(
@@ -531,48 +625,7 @@ async function scrapeProduct({
       }
     }
 
-    /*
-     * AVAILABLE (84)
-     * AVAILABLE(84)
-     */
-
-    if (!stock) {
-      const match =
-        cleanPanelText.match(
-          /\bAVAILABLE\s*\(\s*(\d+)\s*\)/i
-        );
-
-      if (match) {
-        stock =
-          `${match[1]} AVAILABLE`;
-      }
-    }
-
-    /*
-     * 84 AVAILABLE
-     * 84 UNITS AVAILABLE
-     */
-
-    if (!stock) {
-      const match =
-        cleanPanelText.match(
-          /\b(\d+)\s+(?:UNITS?\s+)?AVAILABLE\b/i
-        );
-
-      if (match) {
-        stock =
-          `${match[1]} AVAILABLE`;
-      }
-    }
-
-    /*
-     * LAST FEW: 141
-     * LAST FEW 141
-     *
-     * This is the format currently returned
-     * by the mock store for Junova.
-     */
-
+    // LAST FEW: 141
     if (!stock) {
       const match =
         cleanPanelText.match(
@@ -585,12 +638,33 @@ async function scrapeProduct({
       }
     }
 
-    /*
-     * STOCK: 68 REMAINING
-     * STOCK - 68 REMAINING
-     * STOCK 68 REMAINING
-     */
+    // AVAILABLE (84)
+    if (!stock) {
+      const match =
+        cleanPanelText.match(
+          /\bAVAILABLE\s*\(\s*(\d+)\s*\)/i
+        );
 
+      if (match) {
+        stock =
+          `${match[1]} AVAILABLE`;
+      }
+    }
+
+    // 84 AVAILABLE
+    if (!stock) {
+      const match =
+        cleanPanelText.match(
+          /\b(\d+)\s+(?:UNITS?\s+)?AVAILABLE\b/i
+        );
+
+      if (match) {
+        stock =
+          `${match[1]} AVAILABLE`;
+      }
+    }
+
+    // STOCK: 68 REMAINING
     if (!stock) {
       const match =
         cleanPanelText.match(
@@ -603,10 +677,7 @@ async function scrapeProduct({
       }
     }
 
-    /*
-     * 68 REMAINING
-     */
-
+    // 68 REMAINING
     if (!stock) {
       const match =
         cleanPanelText.match(
@@ -619,11 +690,7 @@ async function scrapeProduct({
       }
     }
 
-    /*
-     * ONLY 5 LEFT
-     * 5 LEFT
-     */
-
+    // ONLY 5 LEFT / 5 LEFT
     if (!stock) {
       const match =
         cleanPanelText.match(
@@ -636,10 +703,7 @@ async function scrapeProduct({
       }
     }
 
-    /*
-     * IN STOCK
-     */
-
+    // IN STOCK
     if (!stock) {
       if (
         /\bIN STOCK\b/i.test(
@@ -651,10 +715,7 @@ async function scrapeProduct({
       }
     }
 
-    /*
-     * AVAILABLE WITHOUT NUMBER
-     */
-
+    // AVAILABLE without number
     if (!stock) {
       if (
         /\bAVAILABLE\b/i.test(
@@ -666,12 +727,7 @@ async function scrapeProduct({
       }
     }
 
-    /*
-     * If the panel contains explicit
-     * stock/inventory wording but no
-     * numeric value, preserve it.
-     */
-
+    // Generic stock/inventory wording
     if (!stock) {
       const stockLine =
         cleanPanelText.match(
@@ -715,7 +771,6 @@ async function scrapeProduct({
     };
 
   } catch (error) {
-
     // ============================================
     // ERROR
     // ============================================
@@ -731,10 +786,15 @@ async function scrapeProduct({
     };
 
   } finally {
+    console.log(
+      "Closing browser..."
+    );
 
-    await page.waitForTimeout(1000);
+    await safeClose(browser);
 
-    await browser.close();
+    console.log(
+      "Browser closed."
+    );
   }
 }
 
