@@ -22,7 +22,7 @@ function logMemory(label) {
 }
 
 /* =========================================================
-   NORMALIZE TEXT
+   TEXT NORMALIZATION
 ========================================================= */
 
 function normalizeText(text = "") {
@@ -38,8 +38,6 @@ function normalizeText(text = "") {
 
 /* =========================================================
    PRICE EXTRACTION
-   IMPORTANT:
-   We DO NOT use a greedy regex across the whole text.
 ========================================================= */
 
 function extractPrices(text) {
@@ -48,56 +46,51 @@ function extractPrices(text) {
   const prices = [];
 
   /*
-   * Split around ₹ so that:
+   * Split using ₹.
    *
-   * ₹17,10410% saving
+   * Example:
+   * ₹13,498₹19,004₹17,1046% saving₹15,770
    *
-   * does not become 1710410.
-   *
-   * We then take the numeric portion and stop when
-   * the price clearly transitions into another word/percentage.
+   * We extract only the numeric part immediately
+   * following each ₹.
    */
 
-  const rupeeParts = normalized.split("₹");
+  const parts = normalized.split("₹");
 
-  for (let i = 1; i < rupeeParts.length; i++) {
-    let part = rupeeParts[i].trim();
-
-    /*
-     * Remove zero-width characters again for safety.
-     */
-    part = part.replace(/[\u200B-\u200F\u2060\uFEFF]/g, "");
+  for (let i = 1; i < parts.length; i++) {
+    const part = parts[i].trim();
 
     /*
-     * A valid store price normally consists of:
-     * digits + commas + spaces + optional decimal.
-     *
-     * Example:
+     * Price formats:
+     * 13,498
+     * 19,004
      * 17,104
-     * 17 104
-     * 17,104.50
+     * 15770
+     * 1,234.50
      */
 
     const match = part.match(
-      /^(\d{1,3}(?:[\s,]\d{2,3})+|\d+)(?:\.(\d{1,2}))?/
+      /^(\d{1,3}(?:,\d{2,3})+|\d+)(?:\.(\d{1,2}))?/
     );
 
     if (!match) {
       continue;
     }
 
-    const numberString =
-      match[1].replace(/[^\d]/g, "") +
-      (match[2] ? `.${match[2]}` : "");
+    const integerPart = match[1].replace(/,/g, "");
 
-    const price = Number(numberString);
+    const value = Number(
+      match[2]
+        ? `${integerPart}.${match[2]}`
+        : integerPart
+    );
 
     if (
-      Number.isFinite(price) &&
-      price > 0 &&
-      price < 100000000
+      Number.isFinite(value) &&
+      value > 0 &&
+      value < 100000000
     ) {
-      prices.push(price);
+      prices.push(value);
     }
   }
 
@@ -137,25 +130,24 @@ function extractStock(text) {
 }
 
 /* =========================================================
-   COOKIE HANDLER
+   COOKIE HANDLING
 ========================================================= */
 
 async function safeHandleCookies(page) {
   console.log("Checking cookie consent...");
 
   try {
-    const popupCount = await withTimeout(
-      page.locator(".consent-scrim").count(),
-      3000,
+    const popup = page.locator(".consent-scrim").first();
+
+    const count = await withTimeout(
+      popup.count(),
+      2000,
       "Cookie popup count timed out"
     );
 
-    console.log(
-      "Consent popup count:",
-      popupCount
-    );
+    console.log("Consent popup count:", count);
 
-    if (!popupCount) {
+    if (count === 0) {
       console.log("No cookie popup found.");
       return;
     }
@@ -164,12 +156,9 @@ async function safeHandleCookies(page) {
 
     try {
       visible = await withTimeout(
-        page
-          .locator(".consent-scrim")
-          .first()
-          .isVisible(),
-        2000,
-        "Cookie visibility timed out"
+        popup.isVisible(),
+        1500,
+        "Cookie visibility check timed out"
       );
     } catch {
       visible = false;
@@ -188,13 +177,7 @@ async function safeHandleCookies(page) {
 
     console.log("COOKIE POPUP FOUND");
 
-    const dialog = page
-      .locator(
-        ".consent-dialog, .consent-modal, .consent-scrim"
-      )
-      .first();
-
-    const buttons = dialog.locator("button");
+    const buttons = popup.locator("button");
 
     const buttonCount = await withTimeout(
       buttons.count(),
@@ -240,7 +223,7 @@ async function safeHandleCookies(page) {
           break;
         }
       } catch {
-        // continue
+        // Continue searching.
       }
     }
 
@@ -329,7 +312,7 @@ async function getOfferPanel(page) {
         return locator;
       }
     } catch {
-      // continue
+      // Try next selector.
     }
   }
 
@@ -337,15 +320,19 @@ async function getOfferPanel(page) {
 }
 
 /* =========================================================
-   SAFE HOVER
+   SIMPLE HOVER
+   IMPORTANT:
+   NO page.mouse.move()
+   NO controlled movement loop
 ========================================================= */
 
-async function performSafeHover(page, label) {
+async function performSimpleHover(page, label) {
   console.log(
-    `[${label}] Starting safe hover...`
+    `[${label}] Starting simple hover...`
   );
 
-  const panel = await getOfferPanel(page);
+  const panel =
+    await getOfferPanel(page);
 
   if (!panel) {
     throw new Error(
@@ -371,84 +358,22 @@ async function performSafeHover(page, label) {
       `[${label}] Direct hover completed.`
     );
   } catch (error) {
-    console.log(
-      `[${label}] Direct hover warning:`,
-      error.message
+    /*
+     * If direct hover fails, do not start another
+     * mouse movement loop. That was the source
+     * of the Render hang.
+     */
+
+    throw new Error(
+      `[${label}] Hover failed: ${error.message}`
     );
   }
-
-  let box = null;
-
-  try {
-    box = await withTimeout(
-      panel.boundingBox(),
-      2000,
-      `[${label}] boundingBox timed out`
-    );
-  } catch (error) {
-    console.log(
-      `[${label}] boundingBox warning:`,
-      error.message
-    );
-  }
-
-  if (!box) {
-    console.log(
-      `[${label}] No bounding box.`
-    );
-
-    await delay(300);
-
-    return;
-  }
-
-  console.log(
-    `[${label}] Offer panel position found.`
-  );
-
-  const points = [
-    [0.20, 0.20],
-    [0.40, 0.40],
-    [0.60, 0.60],
-    [0.80, 0.80],
-    [0.50, 0.20],
-    [0.50, 0.40],
-    [0.50, 0.60],
-    [0.50, 0.80],
-    [0.20, 0.50],
-    [0.40, 0.50],
-    [0.60, 0.50],
-    [0.80, 0.50],
-    [0.50, 0.50],
-  ];
-
-  console.log(
-    `[${label}] Performing controlled mouse movements...`
-  );
-
-  for (const [rx, ry] of points) {
-    try {
-      await page.mouse.move(
-        box.x + box.width * rx,
-        box.y + box.height * ry
-      );
-    } catch (error) {
-      console.log(
-        `[${label}] Mouse movement warning:`,
-        error.message
-      );
-
-      break;
-    }
-
-    await delay(20);
-  }
-
-  console.log(
-    `[${label}] Controlled hover completed.`
-  );
 
   await delay(500);
+
+  console.log(
+    `[${label}] Simple hover completed.`
+  );
 }
 
 /* =========================================================
@@ -478,7 +403,7 @@ async function getPriceButton(page) {
         return button;
       }
     } catch {
-      // continue
+      // Continue.
     }
   }
 
@@ -509,7 +434,7 @@ async function waitForPriceButton(page) {
           return button;
         }
       } catch {
-        // continue
+        // Continue polling.
       }
     }
 
@@ -578,47 +503,18 @@ async function readOfferPanel(page) {
 }
 
 /* =========================================================
-   WAIT FOR QUOTE + DOM
-   MAIN FIX FOR PRODUCT 2
+   WAIT FOR RENDERED OFFER
 ========================================================= */
 
 async function waitForOfferResult(
   page,
-  quotePromise,
-  timeoutMs = 60000
+  timeoutMs = 30000
 ) {
   console.log(
-    `[OFFER] Waiting up to ${timeoutMs}ms for quote + offer data...`
+    `[OFFER] Waiting up to ${timeoutMs}ms for rendered offer data...`
   );
 
   const start = Date.now();
-
-  let quoteResponse = null;
-  let quoteFinished = false;
-
-  /*
-   * Quote API is now allowed to take time.
-   * We do not fail just because it takes 5–10 seconds.
-   */
-
-  quotePromise
-    .then((response) => {
-      quoteResponse = response;
-      quoteFinished = true;
-
-      console.log(
-        "[OFFER] Quote API completed with status:",
-        response.status()
-      );
-    })
-    .catch((error) => {
-      quoteFinished = true;
-
-      console.log(
-        "[OFFER] Quote API warning:",
-        error.message
-      );
-    });
 
   let lastText = "";
 
@@ -646,26 +542,11 @@ async function waitForOfferResult(
       );
     }
 
-    /*
-     * Once quote has completed, give DOM another
-     * short period to render.
-     */
-
-    if (
-      quoteFinished &&
-      Date.now() - start > 8000
-    ) {
-      console.log(
-        "[OFFER] Quote completed. Continuing DOM polling..."
-      );
-    }
-
     await delay(500);
   }
 
   throw new Error(
-    "Offer data timeout after 60 seconds. " +
-      `Quote finished: ${quoteFinished}. ` +
+    "Rendered offer data timeout after 30 seconds. " +
       `Last panel text: ${lastText.slice(0, 500)}`
   );
 }
@@ -701,7 +582,9 @@ async function scrapeProduct({
       "================================\n"
     );
 
-    /* STEP 1 */
+    /* =====================================================
+       STEP 1
+    ===================================================== */
 
     console.log(
       "[STEP 1] Launching Chromium..."
@@ -734,7 +617,9 @@ async function scrapeProduct({
 
     logMemory("after-browser");
 
-    /* STEP 2 */
+    /* =====================================================
+       STEP 2
+    ===================================================== */
 
     console.log(
       "[STEP 2] Creating browser context..."
@@ -758,7 +643,9 @@ async function scrapeProduct({
       "[STEP 2] Browser context created."
     );
 
-    /* STEP 3 */
+    /* =====================================================
+       STEP 3
+    ===================================================== */
 
     console.log(
       "[STEP 3] Creating browser page..."
@@ -774,7 +661,9 @@ async function scrapeProduct({
       "[STEP 3] Browser page created."
     );
 
-    /* STEP 4 */
+    /* =====================================================
+       STEP 4
+    ===================================================== */
 
     console.log(
       "[STEP 4] Installing network diagnostics..."
@@ -794,11 +683,27 @@ async function scrapeProduct({
       }
     });
 
+    page.on("response", (response) => {
+      const url = response.url();
+
+      if (
+        url.includes("/api/v2/items/")
+      ) {
+        console.log(
+          "<<< QUOTE RESPONSE:",
+          response.status(),
+          url
+        );
+      }
+    });
+
     console.log(
       "[STEP 4] Network diagnostics ready."
     );
 
-    /* STEP 5 */
+    /* =====================================================
+       STEP 5
+    ===================================================== */
 
     console.log(
       "[STEP 5] Opening product page..."
@@ -827,7 +732,9 @@ async function scrapeProduct({
       "[STEP 5] Initial page preparation completed."
     );
 
-    /* STEP 6 */
+    /* =====================================================
+       STEP 6
+    ===================================================== */
 
     console.log(
       "[STEP 6] Checking cookie consent before option selection..."
@@ -847,7 +754,9 @@ async function scrapeProduct({
       "[STEP 6] Cookie handling completed."
     );
 
-    /* STEP 7 */
+    /* =====================================================
+       STEP 7
+    ===================================================== */
 
     console.log(
       "[STEP 7] Selecting option:",
@@ -888,7 +797,7 @@ async function scrapeProduct({
         timeout: 5000,
       }),
       6000,
-      "Option visibility timed out"
+      "Option button visibility timed out"
     );
 
     console.log(
@@ -905,7 +814,7 @@ async function scrapeProduct({
         timeout: 5000,
       }),
       6000,
-      "Option click timed out"
+      "Option button click timed out"
     );
 
     console.log(
@@ -919,7 +828,9 @@ async function scrapeProduct({
 
     await delay(500);
 
-    /* STEP 8 */
+    /* =====================================================
+       STEP 8
+    ===================================================== */
 
     console.log(
       "[STEP 8] Preparing offer panel..."
@@ -938,13 +849,17 @@ async function scrapeProduct({
       "[STEP 8B] Offer panel found."
     );
 
-    /* STEP 9 */
+    /* =====================================================
+       STEP 9
+       ONLY DIRECT HOVER
+       NO MOUSE MOVEMENT
+    ===================================================== */
 
     console.log(
-      "[STEP 9] Performing first safe hover..."
+      "[STEP 9] Performing first simple hover..."
     );
 
-    await performSafeHover(
+    await performSimpleHover(
       page,
       "HOVER"
     );
@@ -955,7 +870,9 @@ async function scrapeProduct({
 
     logMemory("after-first-hover");
 
-    /* STEP 10 */
+    /* =====================================================
+       STEP 10
+    ===================================================== */
 
     console.log(
       "[STEP 10] Checking cookie consent after hover..."
@@ -975,22 +892,25 @@ async function scrapeProduct({
       scrimVisible
     );
 
-    /* STEP 11 */
+    /* =====================================================
+       STEP 11
+       NO RECOVERY HOVER
+       THIS IS THE IMPORTANT FIX
+    ===================================================== */
 
     console.log(
-      "[STEP 11] Performing short recovery hover..."
-    );
-
-    await performSafeHover(
-      page,
-      "HOVER RECOVERY"
+      "[STEP 11] Skipping recovery hover."
     );
 
     console.log(
-      "[STEP 11] Recovery hover completed."
+      "[STEP 11] First hover is sufficient. Continuing..."
     );
 
-    /* STEP 12 */
+    await delay(300);
+
+    /* =====================================================
+       STEP 12
+    ===================================================== */
 
     console.log(
       "[STEP 12] Waiting for price button..."
@@ -1003,7 +923,9 @@ async function scrapeProduct({
       "[STEP 12] Price button unlocked."
     );
 
-    /* STEP 13 */
+    /* =====================================================
+       STEP 13
+    ===================================================== */
 
     console.log(
       "[STEP 13] Final cookie check..."
@@ -1021,7 +943,9 @@ async function scrapeProduct({
       await safeHandleCookies(page);
     }
 
-    /* STEP 14 */
+    /* =====================================================
+       STEP 14
+    ===================================================== */
 
     console.log(
       "[STEP 14] Finding price button..."
@@ -1032,7 +956,7 @@ async function scrapeProduct({
 
     if (!finalButton) {
       throw new Error(
-        "Price button disappeared"
+        "Price button disappeared before click"
       );
     }
 
@@ -1054,16 +978,14 @@ async function scrapeProduct({
       );
     }
 
-    /* STEP 15 */
+    /* =====================================================
+       STEP 15
+       LISTENER IS CREATED BEFORE CLICK
+    ===================================================== */
 
     console.log(
-      "[STEP 15] Preparing quote API diagnostic..."
+      "[STEP 15] Preparing quote API listener..."
     );
-
-    /*
-     * IMPORTANT:
-     * Create the listener BEFORE clicking.
-     */
 
     const quotePromise =
       page.waitForResponse(
@@ -1077,7 +999,7 @@ async function scrapeProduct({
           );
         },
         {
-          timeout: 60000,
+          timeout: 45000,
         }
       );
 
@@ -1085,7 +1007,9 @@ async function scrapeProduct({
       "[STEP 15] Quote listener ready."
     );
 
-    /* STEP 16 */
+    /* =====================================================
+       STEP 16
+    ===================================================== */
 
     console.log(
       "[STEP 16] Clicking price button..."
@@ -1104,19 +1028,24 @@ async function scrapeProduct({
       "[STEP 16] Playwright click completed."
     );
 
-    /* STEP 17 */
+    /* =====================================================
+       STEP 17
+    ===================================================== */
 
     console.log(
       "[STEP 17] Waiting for quote API..."
     );
 
-    /*
-     * DO NOT wait only 1 second.
-     * The store is demonstrably slow.
-     */
+    let quoteResponse;
 
-    const quoteResponse =
-      await quotePromise;
+    try {
+      quoteResponse =
+        await quotePromise;
+    } catch (error) {
+      throw new Error(
+        `Quote API did not respond within 45 seconds: ${error.message}`
+      );
+    }
 
     console.log(
       "[STEP 17] Quote response received:",
@@ -1124,15 +1053,15 @@ async function scrapeProduct({
       quoteResponse.url()
     );
 
-    if (
-      !quoteResponse.ok()
-    ) {
+    if (!quoteResponse.ok()) {
       throw new Error(
         `Quote API returned HTTP ${quoteResponse.status()}`
       );
     }
 
-    /* STEP 18 */
+    /* =====================================================
+       STEP 18
+    ===================================================== */
 
     console.log(
       "[STEP 18] Waiting for rendered offer data..."
@@ -1141,15 +1070,16 @@ async function scrapeProduct({
     const offerResult =
       await waitForOfferResult(
         page,
-        Promise.resolve(quoteResponse),
-        60000
+        30000
       );
 
     console.log(
       "[STEP 18] Valid offer data detected."
     );
 
-    /* STEP 19 */
+    /* =====================================================
+       STEP 19
+    ===================================================== */
 
     console.log(
       "[STEP 19] Reading offer panel..."
@@ -1163,7 +1093,9 @@ async function scrapeProduct({
       offerResult.text
     );
 
-    /* STEP 20 */
+    /* =====================================================
+       STEP 20
+    ===================================================== */
 
     console.log(
       "[STEP 20] Extracting price..."
@@ -1177,18 +1109,23 @@ async function scrapeProduct({
       prices
     );
 
-    if (
-      prices.length === 0
-    ) {
+    if (prices.length === 0) {
       throw new Error(
         "No valid price found"
       );
     }
 
+    /*
+     * Store displays the current selling price
+     * as the last ₹ value in the offer panel.
+     */
+
     const price =
       prices[prices.length - 1];
 
-    /* STEP 21 */
+    /* =====================================================
+       STEP 21
+    ===================================================== */
 
     console.log(
       "[STEP 21] Extracting stock..."
