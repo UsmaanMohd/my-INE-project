@@ -16,7 +16,7 @@ async function scrapeProduct({
 
   try {
     // ============================================
-    // LAUNCH BROWSER
+    // LAUNCH CHROMIUM
     // ============================================
 
     console.log("Launching Chromium...");
@@ -95,18 +95,12 @@ async function scrapeProduct({
 
     console.log("Opening product page...");
 
-    try {
-      await page.goto(productUrl, {
-        waitUntil: "domcontentloaded",
-        timeout: 20000
-      });
+    await page.goto(productUrl, {
+      waitUntil: "domcontentloaded",
+      timeout: 20000
+    });
 
-      console.log("Product page loaded.");
-    } catch (error) {
-      throw new Error(
-        `Product page load failed: ${error.message}`
-      );
-    }
+    console.log("Product page loaded.");
 
     await page.waitForTimeout(1000);
 
@@ -131,8 +125,9 @@ async function scrapeProduct({
       const url = request.url();
 
       if (
-        url.includes("/api/v2/items/") ||
-        url.includes("/quote")
+        url.includes("/api/") ||
+        url.includes("/quote") ||
+        url.includes("/items/")
       ) {
         quoteRequests++;
 
@@ -148,11 +143,15 @@ async function scrapeProduct({
       const url = response.url();
 
       if (
-        url.includes("/api/v2/items/") ||
-        url.includes("/quote")
+        url.includes("/api/") ||
+        url.includes("/quote") ||
+        url.includes("/items/")
       ) {
         quoteResponses++;
-        quoteLastStatus = response.status();
+
+        quoteLastStatus =
+          response.status();
+
         quoteLastUrl = url;
 
         console.log(
@@ -167,8 +166,9 @@ async function scrapeProduct({
       const url = request.url();
 
       if (
-        url.includes("/api/v2/items/") ||
-        url.includes("/quote")
+        url.includes("/api/") ||
+        url.includes("/quote") ||
+        url.includes("/items/")
       ) {
         console.log(
           "XXX REQUEST FAILED:",
@@ -185,7 +185,7 @@ async function scrapeProduct({
     );
 
     // ============================================
-    // HANDLE COOKIE POPUP
+    // COOKIE CHECK
     // ============================================
 
     console.log(
@@ -195,7 +195,7 @@ async function scrapeProduct({
     await handleCookies(page);
 
     // ============================================
-    // SELECT PRODUCT OPTION
+    // SELECT OPTION
     // ============================================
 
     console.log(
@@ -209,15 +209,16 @@ async function scrapeProduct({
         "\\$&"
       );
 
-    const optionButton = page
-      .locator("button")
-      .filter({
-        hasText: new RegExp(
-          `^${escapedOption}$`,
-          "i"
-        )
-      })
-      .first();
+    const optionButton =
+      page
+        .locator("button")
+        .filter({
+          hasText: new RegExp(
+            `^${escapedOption}$`,
+            "i"
+          )
+        })
+        .first();
 
     const optionCount =
       await optionButton.count();
@@ -249,34 +250,29 @@ async function scrapeProduct({
     await page.waitForTimeout(500);
 
     // ============================================
-    // FIND LOCKED OFFER PANEL
+    // FIND OFFER PANEL
     // ============================================
 
-    const offerPanel = page.locator(
-      ".offer-panel.offer-locked"
-    );
+    const offerPanel =
+      page.locator(
+        ".offer-panel.offer-locked"
+      );
 
     console.log(
       "Waiting for locked offer panel..."
     );
 
-    try {
-      await offerPanel.first().waitFor({
-        state: "visible",
-        timeout: 15000
-      });
+    await offerPanel.first().waitFor({
+      state: "visible",
+      timeout: 15000
+    });
 
-      console.log(
-        "Locked offer panel found."
-      );
-    } catch (error) {
-      throw new Error(
-        `Locked offer panel not found: ${error.message}`
-      );
-    }
+    console.log(
+      "Locked offer panel found."
+    );
 
     // ============================================
-    // GET OFFER PANEL POSITION
+    // OFFER PANEL POSITION
     // ============================================
 
     console.log(
@@ -284,7 +280,9 @@ async function scrapeProduct({
     );
 
     const box =
-      await offerPanel.first().boundingBox();
+      await offerPanel
+        .first()
+        .boundingBox();
 
     if (!box) {
       throw new Error(
@@ -296,12 +294,6 @@ async function scrapeProduct({
       "Offer panel position found."
     );
 
-    const startX =
-      box.x + box.width / 2;
-
-    const startY =
-      box.y + box.height / 2;
-
     // ============================================
     // HOVER FUNCTION
     // ============================================
@@ -309,11 +301,11 @@ async function scrapeProduct({
     async function performHoverMovements(
       currentBox
     ) {
-      const currentStartX =
+      const centerX =
         currentBox.x +
         currentBox.width / 2;
 
-      const currentStartY =
+      const centerY =
         currentBox.y +
         currentBox.height / 2;
 
@@ -323,12 +315,12 @@ async function scrapeProduct({
 
       for (let i = 0; i < 120; i++) {
         const x =
-          currentStartX +
+          centerX +
           Math.sin(i / 4) * 80 +
           (i % 5);
 
         const y =
-          currentStartY +
+          centerY +
           Math.cos(i / 5) * 20 +
           (i % 3);
 
@@ -348,11 +340,11 @@ async function scrapeProduct({
 
     await performHoverMovements(box);
 
-    // ============================================
-    // COOKIE CHECK AFTER HOVER
-    // ============================================
-
     await page.waitForTimeout(500);
+
+    // ============================================
+    // COOKIE AFTER HOVER
+    // ============================================
 
     console.log(
       "Checking cookie consent after hover movements..."
@@ -363,18 +355,18 @@ async function scrapeProduct({
     await page.waitForTimeout(500);
 
     // ============================================
-    // CHECK COOKIE SCRIM
+    // COOKIE SCRIM CHECK
     // ============================================
 
     async function isCookieScrimVisible() {
       try {
         const scrim =
-          page.locator(
-            ".consent-scrim"
-          ).first();
+          page
+            .locator(".consent-scrim")
+            .first();
 
         if (
-          await scrim.count() === 0
+          (await scrim.count()) === 0
         ) {
           return false;
         }
@@ -409,23 +401,21 @@ async function scrapeProduct({
 
       await page.waitForTimeout(700);
 
-      const stillVisible =
+      scrimVisible =
         await isCookieScrimVisible();
 
       console.log(
         "Cookie scrim visible after recovery:",
-        stillVisible
+        scrimVisible
       );
 
-      if (stillVisible) {
+      if (scrimVisible) {
         throw new Error(
           "Cookie consent overlay is still blocking the page"
         );
       }
 
-      // ============================================
-      // REPEAT HOVER AFTER COOKIE RECOVERY
-      // ============================================
+      // Repeat hover
 
       console.log(
         "Repeating hover movements after cookie handling..."
@@ -442,10 +432,6 @@ async function scrapeProduct({
         );
       }
 
-      console.log(
-        "Offer panel position found."
-      );
-
       await performHoverMovements(
         newBox
       );
@@ -458,48 +444,52 @@ async function scrapeProduct({
     }
 
     // ============================================
-    // PRICE BUTTON
-    // BOUNDED POLLING - NO waitForFunction
+    // FIND PRICE BUTTON
     // ============================================
 
     console.log(
       "Waiting for price button to unlock (30000ms max)..."
     );
 
+    const priceButtonSelector =
+      'button[aria-label="Check today’s price"]';
+
     const unlockStart =
       Date.now();
 
-    let priceButtonUnlocked =
-      false;
+    let priceButtonUnlocked = false;
 
     while (
       Date.now() - unlockStart <
       30000
     ) {
       try {
-        const buttonState =
-          await page.evaluate(() => {
-            const button =
-              document.querySelector(
-                'button[aria-label="Check today’s price"]'
-              );
+        const state =
+          await page.evaluate(
+            selector => {
+              const button =
+                document.querySelector(
+                  selector
+                );
 
-            if (!button) {
+              if (!button) {
+                return {
+                  exists: false,
+                  disabled: true
+                };
+              }
+
               return {
-                exists: false,
-                disabled: true
+                exists: true,
+                disabled: button.disabled
               };
-            }
-
-            return {
-              exists: true,
-              disabled: button.disabled
-            };
-          });
+            },
+            priceButtonSelector
+          );
 
         if (
-          buttonState.exists &&
-          !buttonState.disabled
+          state.exists &&
+          !state.disabled
         ) {
           priceButtonUnlocked = true;
           break;
@@ -526,7 +516,7 @@ async function scrapeProduct({
     );
 
     // ============================================
-    // COOKIE CHECK BEFORE PRICE CLICK
+    // COOKIE CHECK BEFORE CLICK
     // ============================================
 
     console.log(
@@ -537,15 +527,15 @@ async function scrapeProduct({
 
     await page.waitForTimeout(500);
 
-    let cookieBlocking =
+    scrimVisible =
       await isCookieScrimVisible();
 
     console.log(
       "Cookie scrim visible before click:",
-      cookieBlocking
+      scrimVisible
     );
 
-    if (cookieBlocking) {
+    if (scrimVisible) {
       console.log(
         "Cookie popup appeared again. Handling..."
       );
@@ -554,15 +544,15 @@ async function scrapeProduct({
 
       await page.waitForTimeout(700);
 
-      cookieBlocking =
+      scrimVisible =
         await isCookieScrimVisible();
 
       console.log(
         "Cookie scrim visible after final recovery:",
-        cookieBlocking
+        scrimVisible
       );
 
-      if (cookieBlocking) {
+      if (scrimVisible) {
         throw new Error(
           "Cookie consent overlay is blocking price button"
         );
@@ -570,7 +560,7 @@ async function scrapeProduct({
     }
 
     // ============================================
-    // PRICE BUTTON
+    // PRICE BUTTON LOCATOR
     // ============================================
 
     console.log(
@@ -579,7 +569,7 @@ async function scrapeProduct({
 
     const priceButton =
       page.locator(
-        'button[aria-label="Check today’s price"]'
+        priceButtonSelector
       );
 
     await priceButton.waitFor({
@@ -602,7 +592,7 @@ async function scrapeProduct({
     }
 
     // ============================================
-    // CAPTURE CURRENT NETWORK COUNTS
+    // NETWORK COUNTERS BEFORE CLICK
     // ============================================
 
     const requestsBeforeClick =
@@ -622,55 +612,84 @@ async function scrapeProduct({
     );
 
     // ============================================
-    // CLICK PRICE BUTTON USING DOM
+    // REAL PLAYWRIGHT CLICK
     // ============================================
 
     console.log(
-      "Clicking price button using DOM..."
+      "Clicking price button using Playwright..."
     );
 
-    const clickResult =
-      await page.evaluate(() => {
-        const button =
-          document.querySelector(
-            'button[aria-label="Check today’s price"]'
-          );
+    let clickSuccessful = false;
 
-        if (!button) {
-          return {
-            success: false,
-            reason: "Price button not found"
-          };
-        }
+    try {
+      await priceButton.scrollIntoViewIfNeeded();
 
-        if (button.disabled) {
-          return {
-            success: false,
-            reason: "Price button is disabled"
-          };
-        }
+      const buttonBox =
+        await priceButton.boundingBox();
 
-        button.click();
+      console.log(
+        "Price button bounding box:",
+        buttonBox
+      );
 
-        return {
-          success: true
-        };
+      if (!buttonBox) {
+        throw new Error(
+          "Price button has no bounding box"
+        );
+      }
+
+      await priceButton.click({
+        timeout: 10000,
+        force: true
       });
 
-    console.log(
-      "DOM click result:",
-      clickResult
-    );
+      clickSuccessful = true;
 
-    if (!clickResult.success) {
-      throw new Error(
-        clickResult.reason ||
-        "Price button DOM click failed"
+      console.log(
+        "Playwright price button click completed."
+      );
+
+    } catch (error) {
+      console.log(
+        "Playwright click failed:",
+        error.message
+      );
+    }
+
+    // ============================================
+    // MOUSE FALLBACK
+    // ============================================
+
+    if (!clickSuccessful) {
+      console.log(
+        "Trying mouse click fallback..."
+      );
+
+      const buttonBox =
+        await priceButton.boundingBox();
+
+      if (!buttonBox) {
+        throw new Error(
+          "Price button disappeared before mouse click"
+        );
+      }
+
+      await page.mouse.click(
+        buttonBox.x +
+          buttonBox.width / 2,
+        buttonBox.y +
+          buttonBox.height / 2
+      );
+
+      clickSuccessful = true;
+
+      console.log(
+        "Mouse click fallback completed."
       );
     }
 
     console.log(
-      "Price button clicked successfully."
+      "Price button click completed successfully."
     );
 
     // ============================================
@@ -711,7 +730,7 @@ async function scrapeProduct({
     }
 
     // ============================================
-    // NETWORK DIAGNOSTIC RESULT
+    // NETWORK DIAGNOSTICS
     // ============================================
 
     console.log(
@@ -761,21 +780,14 @@ async function scrapeProduct({
       "================================"
     );
 
-    if (!networkActivityDetected) {
-      console.log(
-        "WARNING: No quote API/network activity detected after price button click."
-      );
-    }
-
     // ============================================
-    // GIVE UI TIME TO RENDER
+    // WAIT FOR UI
     // ============================================
 
     await page.waitForTimeout(1500);
 
     // ============================================
     // WAIT FOR OFFER PANEL DATA
-    // BOUNDED POLLING - NO waitForFunction
     // ============================================
 
     console.log(
@@ -785,11 +797,9 @@ async function scrapeProduct({
     const panelStart =
       Date.now();
 
-    let panelDataDetected =
-      false;
+    let panelDataDetected = false;
 
-    let currentPanelText =
-      "";
+    let currentPanelText = "";
 
     while (
       Date.now() - panelStart <
@@ -886,7 +896,7 @@ async function scrapeProduct({
     );
 
     // ============================================
-    // GET OFFER PANEL TEXT
+    // GET PANEL TEXT
     // ============================================
 
     const panel =
@@ -906,18 +916,8 @@ async function scrapeProduct({
     );
 
     // ============================================
-    // NORMALIZE TEXT
+    // NORMALIZE FULL WIDTH DIGITS
     // ============================================
-
-    /*
-     * Convert full-width Unicode digits:
-     *
-     * １５,９３６
-     *
-     * into:
-     *
-     * 15,936
-     */
 
     const normalizedDigits =
       panelText.replace(
@@ -925,8 +925,8 @@ async function scrapeProduct({
         char =>
           String.fromCharCode(
             char.charCodeAt(0) -
-            0xFF10 +
-            48
+              0xFF10 +
+              48
           )
       );
 
@@ -959,11 +959,6 @@ async function scrapeProduct({
       priceMatches
     );
 
-    /*
-     * Usually the final ₹ amount is
-     * the current/selling price.
-     */
-
     const priceText =
       priceMatches[
         priceMatches.length - 1
@@ -989,8 +984,6 @@ async function scrapeProduct({
 
     let stock = null;
 
-    // SOLD OUT
-
     if (
       /SOLD OUT/i.test(
         cleanPanelText
@@ -999,17 +992,14 @@ async function scrapeProduct({
       stock = "SOLD OUT";
     }
 
-    // OUT OF STOCK
-
     if (
+      !stock &&
       /OUT OF STOCK/i.test(
         cleanPanelText
       )
     ) {
       stock = "OUT OF STOCK";
     }
-
-    // AVAILABLE (99)
 
     if (!stock) {
       const availableBracket =
@@ -1023,8 +1013,6 @@ async function scrapeProduct({
       }
     }
 
-    // 99 AVAILABLE
-
     if (!stock) {
       const numberAvailable =
         cleanPanelText.match(
@@ -1036,8 +1024,6 @@ async function scrapeProduct({
           `${numberAvailable[1]} AVAILABLE`;
       }
     }
-
-    // 99 UNITS AVAILABLE
 
     if (!stock) {
       const unitsAvailable =
@@ -1051,8 +1037,6 @@ async function scrapeProduct({
       }
     }
 
-    // STOCK: 68 REMAINING
-
     if (!stock) {
       const stockRemaining =
         cleanPanelText.match(
@@ -1064,8 +1048,6 @@ async function scrapeProduct({
           `STOCK: ${stockRemaining[1]} REMAINING`;
       }
     }
-
-    // 68 REMAINING
 
     if (!stock) {
       const remaining =
@@ -1079,8 +1061,6 @@ async function scrapeProduct({
       }
     }
 
-    // LAST FEW: 71
-
     if (!stock) {
       const lastFew =
         cleanPanelText.match(
@@ -1092,8 +1072,6 @@ async function scrapeProduct({
           `LAST FEW: ${lastFew[1]}`;
       }
     }
-
-    // ONLY 5 LEFT
 
     if (!stock) {
       const onlyLeft =
@@ -1107,8 +1085,6 @@ async function scrapeProduct({
       }
     }
 
-    // 5 LEFT
-
     if (!stock) {
       const left =
         cleanPanelText.match(
@@ -1121,8 +1097,6 @@ async function scrapeProduct({
       }
     }
 
-    // IN STOCK
-
     if (!stock) {
       if (
         /IN STOCK/i.test(
@@ -1132,8 +1106,6 @@ async function scrapeProduct({
         stock = "IN STOCK";
       }
     }
-
-    // AVAILABLE
 
     if (!stock) {
       if (
@@ -1152,7 +1124,7 @@ async function scrapeProduct({
     }
 
     // ============================================
-    // FINAL RESULT
+    // SUCCESS
     // ============================================
 
     console.log(
@@ -1177,10 +1149,6 @@ async function scrapeProduct({
 
   } catch (error) {
 
-    // ============================================
-    // ERROR
-    // ============================================
-
     console.error(
       "\nSCRAPE FAILED:",
       error.message
@@ -1204,7 +1172,7 @@ async function scrapeProduct({
   } finally {
 
     // ============================================
-    // SAFE BROWSER CLEANUP
+    // CLEANUP
     // ============================================
 
     console.log(
