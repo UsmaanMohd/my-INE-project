@@ -1,4 +1,5 @@
-## Product Price Tracker
+# INE | Software Engineer Intern Assignment
+## Product Price Tracker — Web Scraping
 
 A full-stack product price and stock tracking application built for the INE Software Engineer Intern assignment.
 
@@ -377,7 +378,7 @@ Stores every scrape attempt.
 
 ## ⭐ Bonus Features Implemented
 
-### ⭐ Bonus 1 Implemented — Multiple Tracked Products Dashboard
+### ⭐ Bonus 1 — Multiple Tracked Products Dashboard
 
 The assignment lists a dashboard across multiple tracked products as a bonus. The application tracks multiple products simultaneously and stores separate history/logs for each product.
 
@@ -390,7 +391,7 @@ Product 4 → History + Logs
 
 This demonstrates that scheduled scraping processes all tracked products rather than only one product.
 
-### ⭐ Bonus 2 Implemented — CI/CD with Jenkins
+### ⭐ Bonus 2 — CI/CD with Jenkins
 
 The assignment mentions CI/CD as a bonus. Instead of GitHub Actions, the project implements CI/CD using **Jenkins + Docker + Amazon ECR + AWS EC2**.
 
@@ -481,6 +482,26 @@ Dashboard History / Logs
  ↓
 CSV Export
 ```
+
+---
+
+## Environment Variables
+
+The backend requires the following environment variables (create a `.env` file in `backend/` — never commit actual values to the public repo):
+
+```
+SUPABASE_URL=
+SUPABASE_SECRET_KEY=
+PORT=5000
+CRON_SECRET=
+```
+
+| Variable | Purpose |
+|---|---|
+| `SUPABASE_URL` | Base URL of the Supabase project used for `tracked_products` and `scrape_history` |
+| `SUPABASE_SECRET_KEY` | Service role / secret key for server-side Supabase access |
+| `PORT` | Port the Express backend listens on (defaults to `5000` locally) |
+| `CRON_SECRET` | Shared secret required in the `x-cron-secret` header on `POST /api/cron/scrape`, so the scheduled-scrape endpoint can't be triggered by anyone else |
 
 ---
 
