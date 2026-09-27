@@ -1,769 +1,591 @@
-# INE Price Tracker
+INE | Software Engineer Intern Assignment
 
-A full-stack product price and stock tracking application developed for the INE Software Engineer Intern Assignment.
+Product Price Tracker — Web Scraping
 
-The application allows users to search products from the INE mock store, select a specific product option, track products, scrape price and stock information, maintain historical data and scrape logs, and export collected data as CSV.
+A full-stack product price and stock tracking application built for the INE Software Engineer Intern assignment.
 
-## Live Project
+The application allows users to search products from INE's hosted mock store, select a product option, track it, scrape its price and stock on a fixed schedule, view history/logs, and export scrape history as CSV.
 
-### Frontend
-https://YOUR-VERCEL-URL
+Live Project
 
-### Backend
-https://my-ine-project-oeh8.onrender.com
+Frontend: https://my-ine-project.vercel.app/
 
-### Mock Store
-https://demo.inelabteamdev.com
+Backend: AWS EC2 (final deployment)
 
----
+Initial Backend Deployment: Render
 
-## Features
+Database: Supabase PostgreSQL
 
-- Search products by partial or full product name
-- Select a specific product option or bundle
-- Track multiple products
-- Scrape current price
-- Scrape current stock availability
-- Playwright-based browser scraping
-- Cookie consent handling
-- Automatic retry mechanism
-- Timeout handling
-- HTTP error handling
-- Price history tracking
-- Stock history tracking
-- Complete scrape attempt logs
-- Manual "Scrape Now" functionality
-- Scheduled scraping
-- CSV export
-- Supabase PostgreSQL persistence
-- React frontend
-- Node.js and Express backend
-- Vercel frontend deployment
-- Render backend deployment
-- External cron scheduling
+Repository: https://github.com/UsmaanMohd/my-INE-project
 
----
+Tech Stack
 
-## Tech Stack
+Frontend: React.js, Vite, Vercel
 
-### Frontend
+Backend: Node.js, Express.js
 
-- React.js
-- Vite
-- Axios
-- CSS
+Scraping: Playwright
 
-### Backend
+Database: Supabase PostgreSQL
 
-- Node.js
-- Express.js
-- Playwright
-- Cheerio
+Scheduling: cron-job.org
 
-### Database
+DevOps: Docker, Jenkins, Amazon ECR, AWS EC2
 
-- Supabase PostgreSQL
+Version Control: Git, GitHub
 
-### Deployment
+Deployment
 
-- Vercel
-- Render
+✅ Successful Initial Deployment — Vercel + Render
 
-### Scheduling
-
-- cron-job.org
-
----
-
-## Project Structure
-
-INE-project_By_Usmaan/
-
-    backend/
-        src/
-            config/
-                supabase.js
-
-            controllers/
-                productController.js
-                exportController.js
-                cronController.js
-                catalogController.js
-
-            routes/
-                productRoutes.js
-                exportRoutes.js
-                cronRoutes.js
-                catalogRoutes.js
-
-            scraper/
-                scraper.js
-                cookieHandler.js
-
-            services/
-                scrapeService.js
-                testScrapeService.js
-
-            app.js
-            server.js
-
-        .env
-        .gitignore
-        package.json
-
-    frontend/
-        src/
-            components/
-                HistoryChart.jsx
-                ScrapeLogs.jsx
-
-            App.jsx
-            App.css
-            main.jsx
-
-        package.json
-
----
-
-## System Architecture
+The complete application was first deployed and tested using the assignment's recommended deployment setup.
 
 React Frontend
-        |
-        | REST API
-        v
-Node.js + Express Backend
-        |
-        +-------------------+
-        |                   |
-        v                   v
-Supabase PostgreSQL     Playwright Scraper
-                            |
-                            v
-                    INE Mock Store
+      ↓
+Vercel
+      ↓
+Node.js + Express + Playwright
+      ↓
+Render
+      ↓
+Supabase PostgreSQL
 
-External Cron
-        |
-        v
-POST /api/cron/scrape
-        |
-        v
-Backend
-        |
-        v
-All Tracked Products
-        |
-        v
-Scrape -> Retry -> Save History
+cron-job.org
+      ↓
+Render Backend
 
----
+The application was successfully tested on this setup before moving the backend to AWS.
 
-## Application Flow
+Verified on Render + Vercel
 
-### Product Search
+Product search
 
-User enters a product name in the Add Product section.
+Product and option selection
 
-Search request:
+Tracking products
 
-GET /api/catalog/search?q=digital%20piano
+Playwright scraping
 
-The backend searches the INE mock store catalog and returns matching products.
+Price and stock extraction
 
-The frontend uses a short debounce before sending search requests so that unnecessary requests are avoided while typing.
+Supabase database operations
 
----
+Price history
 
-### Product Selection
+Scrape logs
 
-After searching, the user selects a product.
+Retry and failure handling
 
-The application then fetches the available options for that product.
+CSV export
 
-GET /api/catalog/:id/options
+Scheduled scraping through cron-job.org
 
-The user selects the required option or bundle.
+🚀 FINAL DEPLOYMENT — VERCEL + AWS CI/CD
 
----
+After the Render + Vercel deployment was working successfully, the backend was moved to AWS EC2 for the final deployment.
 
-### Product Tracking
+The frontend continued to run on Vercel.
 
-After selecting the product and option, the application sends the product information to the backend.
+React Frontend
+      ↓
+Vercel
+      ↓
+AWS EC2
+      ↓
+Docker Container
+      ↓
+Node.js + Express + Playwright
+      ↓
+Supabase PostgreSQL
 
-POST /api/products
+AWS CI/CD Flow
 
-The selected product and option are stored in the tracked_products table.
+GitHub
+   ↓
+Jenkins
+   ↓
+Docker Build
+   ↓
+Amazon ECR
+   ↓
+AWS EC2
+   ↓
+Health Check
+   ↓
+Deployment Complete
 
----
+Jenkins handles the Docker build, ECR image push, EC2 deployment, container replacement, and post-deployment health check.
 
-## Scraping Process
+Core Features
 
-The scraper uses Playwright because the mock store contains dynamically rendered offer information and requires browser interaction.
+1. Product Search and Selection
 
-The scraping process is:
+Users can search the INE hosted mock store using a partial or full product name.
 
-1. Open product page
-2. Handle cookie consent popup
-3. Select the required product option
-4. Find the offer panel
-5. Perform unlock hover
-6. Unlock the price button
-7. Click the "Check today's price" button
-8. Wait for the quote API response
-9. Wait for the rendered offer information
-10. Extract price
-11. Extract stock
-12. Save the result in the database
+User enters product name
+        ↓
+React Frontend
+        ↓
+Backend Catalog API
+        ↓
+INE Mock Store
+        ↓
+Matching Products
+        ↓
+User selects Product + Option
+        ↓
+Tracked Product saved in Supabase
 
----
+The selected product option is persisted so future scrapes track the same option.
 
-## Price Extraction
+2. Product Tracking
 
-The scraper extracts price values from the rendered offer panel.
+A tracked product stores:
 
-The application handles dynamically rendered price information and normalizes the extracted text before processing the numeric price values.
+Store product ID
 
----
+Product name
 
-## Stock Extraction
+Selected option
 
-The scraper supports different stock formats returned by the mock store.
+Product URL
 
-Examples include:
+Created timestamp
 
-- AVAILABLE
-- 127 AVAILABLE
-- 14 AVAILABLE
-- LAST FEW: 36
-- ONLY 5 LEFT
-- 5 LEFT
-- SOLD OUT
-- OUT OF STOCK
+At submission, multiple products are tracked so the dashboard contains real history and scrape logs.
 
-The extracted stock information is stored in scrape_history.
+3. Price and Stock Scraping
 
----
+Playwright is used because the mock store requires browser interaction and dynamically rendered data.
 
-## Retry and Failure Handling
+Scraping Flow
 
-Every scrape can run for a maximum of 3 attempts.
+Tracked Product
+      ↓
+Open Product Page
+      ↓
+Handle Cookie Consent
+      ↓
+Select Required Option
+      ↓
+Unlock Offer
+      ↓
+Hover / Page Interaction
+      ↓
+Wait for Price Button
+      ↓
+Click Price Button
+      ↓
+Wait for Quote API
+      ↓
+Wait for Offer Rendering
+      ↓
+Extract Price + Stock
+      ↓
+Save Result
 
-Flow:
+The scraper is designed specifically for the provided INE mock store.
+
+4. Reliability and Retry Handling
+
+Scraping is attempted up to 3 times.
 
 Attempt 1
-    |
-    +-- Success -> Save success
-    |
-    +-- Failure -> Save retry log
-                       |
-                       v
-                   Attempt 2
-                       |
-                       +-- Success -> Save retried
-                       |
-                       +-- Failure -> Save retry log
-                                          |
-                                          v
-                                      Attempt 3
-                                          |
-                                          +-- Success -> Save retried
-                                          |
-                                          +-- Failure -> Save failed
+   ↓
+Success → success
+   │
+   └── Failure
+          ↓
+      Save retry log
+          ↓
+      Attempt 2
+          ↓
+      Success → retried
+          │
+          └── Failure
+                 ↓
+             Attempt 3
+                 ↓
+        Success → retried
+                 │
+                 └── Failure → failed
 
-The scraper does not silently stop after a failure.
+The scraper handles:
 
-Failed attempts store:
+Slow responses
 
-- No price
-- No stock
-- Error message
-- Attempt number
-- Timestamp
-- Failure/retry outcome
+Quote API delays
 
----
+Price button delays
 
-## Error Handling
+Temporary scraping failures
 
-The application handles different scraper failure scenarios.
+Page interaction issues
 
-### Quote API Timeout
+Retry and recovery
 
-If the quote API does not respond within the configured timeout, the current attempt is recorded and the scraper retries.
+Failures are not silently ignored.
 
-### HTTP 500
+For a failed attempt:
 
-If the quote API returns HTTP 500, the failure is logged and the scraper retries.
+price = blank
+stock = blank
+outcome = failed
+error_message = stored
 
-### Cookie Popup
+This keeps the scrape history honest.
 
-The scraper detects the cookie consent popup and attempts to click the ALLOW button.
+5. Scheduled Scraping — Every 2 Hours
 
-### Locked Price Button
+The assignment requires scheduled scraping every 2 hours.
 
-The scraper performs bounded hover and recovery movements to unlock the price button.
+We use cron-job.org as the external scheduler.
 
-### Scrape Failure
+Initial Render Setup
 
-After all retry attempts fail, the final attempt is saved with the failed outcome and error message.
-
----
-
-## Database Design
-
-The application uses Supabase PostgreSQL.
-
-### tracked_products
-
-This table stores products selected by the user for tracking.
-
-Fields:
-
-- id
-- store_product_id
-- product_name
-- selected_option
-- product_url
-- created_at
-
-The combination of store_product_id and selected_option is unique.
-
----
-
-### scrape_history
-
-This table stores every scraping attempt.
-
-Fields:
-
-- id
-- tracked_product_id
-- attempt_number
-- scraped_at
-- price
-- stock
-- outcome
-- error_message
-
-Possible outcome values:
-
-- success
-- retried
-- failed
-
-Failed attempts have blank/null price and stock values.
-
----
-
-## Dashboard
-
-The dashboard displays tracked products and their monitoring information.
-
-For each product, the application displays:
-
-- Product name
-- Store product ID
-- Selected option
-- Current price
-- Current stock
-- Last successful scrape
-- Price history
-- Scrape activity
-- Number of scrape attempts
-
----
-
-## Manual Scraping
-
-Each tracked product has a "Scrape Now" button.
-
-The frontend sends:
-
-POST /api/products/:id/scrape
-
-The backend runs the scrape service.
-
-The scrape service:
-
-1. Attempts scraping
-2. Retries when required
-3. Saves every attempt
-4. Returns the final result
-5. Updates the product history
-
----
-
-## Scheduled Scraping
-
-Scheduled scraping is triggered using an external cron service.
-
-Endpoint:
-
+cron-job.org
+      ↓
+Render Backend
+      ↓
 POST /api/cron/scrape
+      ↓
+Fetch All Tracked Products
+      ↓
+Scrape Products
+      ↓
+Save History
 
-The cron request requires the following header:
+Final AWS Setup
 
-x-cron-secret: YOUR_CRON_SECRET
+After moving the backend to AWS, cron-job.org was updated to trigger the AWS backend.
 
-The scheduled process:
+cron-job.org
+      ↓
+AWS EC2 Backend
+      ↓
+POST /api/cron/scrape
+      ↓
+Fetch All Tracked Products
+      ↓
+Playwright Scraping
+      ↓
+Retry Failed Attempts
+      ↓
+Save Price + Stock + Outcome
+      ↓
+Supabase PostgreSQL
 
-1. Fetch all tracked products
-2. Scrape each tracked product
-3. Retry failed attempts
-4. Save successful results
-5. Save retry attempts
-6. Save final failures
-7. Continue with the remaining tracked products
+The scheduled AWS run was verified with multiple products, including successful first attempts and successful retry/recovery cases.
 
-The production schedule is configured to run every 2 hours.
+6. Price History
 
-An external cron service is used because the backend is deployed on a free-tier hosting environment that can sleep when inactive.
+Each successful or recovered scrape is stored in scrape_history.
 
----
+The dashboard can show the tracked product's price and stock history over time.
 
-## CSV Export
+Scrape
+   ↓
+Price + Stock
+   ↓
+Timestamp
+   ↓
+Supabase
+   ↓
+History
 
-The application provides CSV export for tracked products.
+7. Per-Product Scrape Log
 
-The exported data contains:
+Every scrape attempt is recorded with:
 
-- Store product ID
-- Product name
-- Selected option
-- Timestamp
-- Price
-- Stock
-- Outcome
+Attempt number
 
-Failed attempts contain blank price and stock values while retaining the timestamp and outcome.
+Timestamp
 
----
+Price
 
-## API Endpoints
+Stock
 
-### Health Check
+Outcome
 
-GET /api/health
+Error message when applicable
 
-Checks whether the backend is running.
+Possible outcomes:
 
----
+success
+retried
+failed
 
-### Database Test
+Failures remain visible instead of being hidden.
 
-GET /api/test-db
+8. CSV Export
 
-Checks Supabase database connectivity.
+The dashboard provides CSV export for the complete scrape history.
 
----
+The CSV contains:
 
-### Get Tracked Products
+store product ID
+product name
+selected option
+timestamp (ISO 8601 UTC)
+price
+stock
+outcome
 
-GET /api/products
+Failed attempts are included with blank price and stock values.
 
-Returns all tracked products.
+9. Headed Scraper Run
 
----
+The scraper can run using a visible Playwright browser so its behavior can be observed.
 
-### Get Single Product
+The headed flow demonstrates:
 
-GET /api/products/:id
+Open Mock Store
+      ↓
+Handle Cookies
+      ↓
+Select Option
+      ↓
+Unlock Offer
+      ↓
+Price Request
+      ↓
+Slow / Failed Response
+      ↓
+Retry
+      ↓
+Successful Scrape
+      ↓
+Save History
 
-Returns a specific tracked product.
+This is used for the required 2–4 minute screen recording.
 
----
+Database
 
-### Add Product
+Two main Supabase PostgreSQL tables are used.
+
+tracked_products
+
+Stores the products and options being tracked.
+
+id
+store_product_id
+product_name
+selected_option
+product_url
+created_at
+
+scrape_history
+
+Stores every scrape attempt.
+
+id
+tracked_product_id
+attempt_number
+scraped_at
+price
+stock
+outcome
+error_message
+
+⭐ Bonus Features Implemented
+
+⭐ Bonus 1 — Multiple Tracked Products Dashboard
+
+The assignment lists a dashboard across multiple tracked products as a bonus.
+
+The application tracks multiple products simultaneously and stores separate history/logs for each product.
+
+Product 1 → History + Logs
+Product 2 → History + Logs
+Product 3 → History + Logs
+Product 4 → History + Logs
+
+This demonstrates that scheduled scraping processes all tracked products rather than only one product.
+
+⭐ Bonus 2 — CI/CD with Jenkins
+
+The assignment mentions CI/CD as a bonus.
+
+Instead of GitHub Actions, the project implements CI/CD using Jenkins + Docker + Amazon ECR + AWS EC2.
+
+GitHub
+   ↓
+Jenkins
+   ↓
+Docker Build
+   ↓
+Amazon ECR
+   ↓
+AWS EC2
+   ↓
+Health Check
+
+The pipeline:
+
+Checks out the GitHub repository.
+
+Builds the backend Docker image.
+
+Logs into Amazon ECR.
+
+Pushes the latest image to ECR.
+
+Pulls the latest image on EC2.
+
+Stops and removes the previous container.
+
+Starts the new container.
+
+Performs a backend health check.
+
+Architecture
+
+                         ┌───────────────┐
+                         │   Vercel      │
+                         │ React Frontend│
+                         └───────┬───────┘
+                                 │
+                                 ↓
+                         ┌───────────────┐
+                         │   AWS EC2     │
+                         │ Docker        │
+                         │ Node/Express  │
+                         │ Playwright    │
+                         └───────┬───────┘
+                                 │
+                                 ↓
+                         ┌───────────────┐
+                         │   Supabase    │
+                         │  PostgreSQL   │
+                         └───────────────┘
+
+GitHub → Jenkins → Docker → Amazon ECR → AWS EC2
+
+cron-job.org
+      ↓
+AWS EC2 /api/cron/scrape
+      ↓
+Scheduled scraping every 2 hours
+
+Complete Application Flow
+
+User
+ ↓
+Search Product
+ ↓
+Select Product + Option
+ ↓
+Track Product
+ ↓
+Supabase
+ ↓
+Manual Scrape / Scheduled Scrape
+ ↓
+Playwright
+ ↓
+Price + Stock Extraction
+ ↓
+Retry if required
+ ↓
+Save Scrape History
+ ↓
+Dashboard History / Logs
+ ↓
+CSV Export
+
+Local Setup
+
+git clone https://github.com/UsmaanMohd/my-INE-project.git
+cd my-INE-project/backend
+npm install
+npm start
+
+Backend starts on port 5000.
+
+Important API Endpoints
+
+GET  /api/health
+GET  /api/test-db
+
+GET  /api/catalog/search
+GET  /api/products
 
 POST /api/products
-
-Adds a product and selected option to tracking.
-
-Example request:
-
-{
-    "store_product_id": "2638",
-    "product_name": "Junova Travel Router Nano",
-    "selected_option": "2-pack",
-    "product_url": "https://demo.inelabteamdev.com/item/2638"
-}
-
----
-
-### Price History
-
-GET /api/products/:id/history
-
-Returns price and stock history for a tracked product.
-
----
-
-### Latest Price
-
-GET /api/products/:id/latest
-
-Returns the latest successful scrape.
-
----
-
-### Scrape Logs
-
-GET /api/products/:id/logs
-
-Returns all scraping attempts for a tracked product.
-
----
-
-### Manual Scrape
-
 POST /api/products/:id/scrape
 
-Starts a manual scrape for the selected tracked product.
-
----
-
-### Product Search
-
-GET /api/catalog/search?q=digital%20piano
-
-Searches the INE mock store catalog.
-
----
-
-### Product Options
-
-GET /api/catalog/:id/options
-
-Returns available options for a product.
-
----
-
-### Scheduled Scrape
+GET  /api/products/:id/history
+GET  /api/products/export/csv
 
 POST /api/cron/scrape
 
-Starts scheduled scraping for all tracked products.
+Security
 
-The endpoint is protected using the cron secret.
+Database secret credentials are kept outside the public source code.
 
----
+Cron endpoint is protected with a secret request header.
 
-## Environment Variables
+Sensitive credentials are not included in the public GitHub repository.
 
-### Backend
+AWS access is handled through the EC2 IAM role rather than hard-coded AWS credentials.
 
-Create a .env file inside the backend directory.
+AI Tool Usage
 
-Required variables:
+AI tools were used during development for assistance with:
 
-SUPABASE_URL=your_supabase_url
+Debugging
 
-SUPABASE_SECRET_KEY=your_supabase_secret_key
+Understanding Playwright behavior
 
-PORT=5000
+Improving retry/error-handling logic
 
-CRON_SECRET=your_cron_secret
+Deployment troubleshooting
 
-For Render:
+README/documentation preparation
 
-SUPABASE_URL=your_supabase_url
+All final code was reviewed, tested, and adapted during the implementation. The scraping logic was tested against the provided INE mock store, including delayed responses and retry scenarios.
 
-SUPABASE_SECRET_KEY=your_supabase_secret_key
+Project Structure
 
-CRON_SECRET=your_cron_secret
+INE-project_By_Usmaan/
+├── backend/
+│   ├── src/
+│   │   ├── config/
+│   │   ├── controllers/
+│   │   ├── routes/
+│   │   ├── scraper/
+│   │   ├── services/
+│   │   ├── app.js
+│   │   └── server.js
+│   ├── Dockerfile
+│   ├── package.json
+│   └── .env
+├── frontend/
+├── Jenkinsfile
+└── README.md
 
-PLAYWRIGHT_BROWSERS_PATH=0
+Final Deployment Summary
 
-HEADLESS=true
+Initial Successful Deployment
 
----
+Vercel + Render + Supabase + cron-job.org
 
-### Frontend
+The application was first deployed and fully tested using the assignment's recommended deployment architecture.
 
-For local development:
+Final Deployment
 
-VITE_API_URL=http://localhost:5000/api
+Vercel + AWS EC2 + Docker + Jenkins + Amazon ECR + Supabase + cron-job.org
 
-For production:
+After successful Render testing, the backend was moved to AWS and the CI/CD pipeline was added.
 
-VITE_API_URL=https://my-ine-project-oeh8.onrender.com/api
+Bonus Highlights
 
-Never commit .env files or secret keys to GitHub.
+⭐ Multiple tracked products
 
----
+⭐ Jenkins CI/CD
 
-## Local Setup
+⭐ Docker containerization
 
-### Backend
+⭐ Amazon ECR
 
-Open a terminal and run:
+⭐ AWS EC2 deployment
 
-cd backend
-
-npm install
-
-npx playwright install chromium
-
-npm start
-
-The backend runs on:
-
-http://localhost:5000
-
----
-
-### Frontend
-
-Open another terminal:
-
-cd frontend
-
-npm install
-
-npm run dev
-
-The frontend will start using the Vite development server.
-
----
-
-## Deployment
-
-### Backend Deployment
-
-The backend is deployed on Render.
-
-Root Directory:
-
-backend
-
-Build Command:
-
-npm install && npx playwright install chromium
-
-Start Command:
-
-npm start
-
-Render environment variables:
-
-- SUPABASE_URL
-- SUPABASE_SECRET_KEY
-- CRON_SECRET
-- PLAYWRIGHT_BROWSERS_PATH
-- HEADLESS
-
----
-
-### Frontend Deployment
-
-The frontend is deployed on Vercel.
-
-Production environment variable:
-
-VITE_API_URL=https://my-ine-project-oeh8.onrender.com/api
-
----
-
-## Cron Configuration
-
-The external cron service sends:
-
-POST
-
-https://my-ine-project-oeh8.onrender.com/api/cron/scrape
-
-Required header:
-
-x-cron-secret: YOUR_CRON_SECRET
-
-Final production frequency:
-
-Every 2 hours
-
----
-
-## Testing
-
-The application has been tested for:
-
-- Product search
-- Product option selection
-- Product tracking
-- Manual scraping
-- Scheduled scraping
-- Price extraction
-- Stock extraction
-- Cookie popup handling
-- Price button unlocking
-- Quote API timeout
-- HTTP 500 response
-- Automatic retry
-- Failed scrape logging
-- Successful scrape logging
-- Price history
-- Scrape activity logs
-- CSV export
-- Supabase persistence
-
----
-
-## Tracked Products
-
-The application has been tested with multiple products from the INE mock store.
-
-Examples:
-
-1. Junova Travel Router Nano
-   - Option: 2-pack
-
-2. Mosella Digital Piano Core
-   - Option: Starter bundle
-
-3. Pinecrest Digital Piano Aero
-   - Option: Starter bundle
-
----
-
-## Security
-
-Sensitive credentials are stored using environment variables.
-
-The following must not be committed to GitHub:
-
-- .env
-- SUPABASE_SECRET_KEY
-- CRON_SECRET
-
-The scheduled scraping endpoint requires the configured cron secret.
-
-Supabase Row Level Security is enabled for the application tables.
-
----
-
-## Known Limitations
-
-- The scraper is designed specifically for the provided INE mock store.
-- Scraping depends on the mock store page structure.
-- Render free-tier instances may sleep when inactive.
-- External cron is therefore used for scheduled scraping.
-- The scraper currently uses a maximum of 3 attempts per scrape.
-
----
-
-## Future Improvements
-
-- Price drop alerts
-- Email notifications
-- Configurable scraping frequency
-- Price change detection
-- Multiple store support
-- Additional analytics
-- User authentication
-- CI/CD automation
-
----
-
-## Author
-
-Usmaan Mohd
-
-Developed for the INE Software Engineer Intern Assignment.
